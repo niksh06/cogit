@@ -693,6 +693,31 @@ class Repository:
                 }
         raise UserError(f"blame-fact: {assertion_oid} was never introduced in the selected ancestry")
 
+    def fact_events(self, assertion_oid: str, start: str = None):
+        """Introduction/removal events for a fact in selected ancestry (COG-019).
+
+        introduced: fact in mindset(T), in no parent mindset.
+        removed:    fact absent from mindset(T), present in >= 1 parent mindset.
+        Newest first, matching `log` order.
+        """
+        assertion_oid = self.expand_object_id(assertion_oid)
+        self._read_typed(assertion_oid, "assertion")
+        start_oid = self.resolve(start or "HEAD")
+        thoughts = self._ancestry(start_oid)
+        mindsets = {
+            oid: set(self._read_typed(t["mindset"], "mindset")["assertions"])
+            for oid, t in thoughts.items()
+        }
+        events = []
+        for oid in self._topo_oldest_first(thoughts):
+            present = assertion_oid in mindsets[oid]
+            in_parent = any(assertion_oid in mindsets.get(p, set()) for p in thoughts[oid]["parents"])
+            if present and not in_parent:
+                events.append({"event": "introduced", "id": oid, **thoughts[oid]})
+            elif not present and in_parent:
+                events.append({"event": "removed", "id": oid, **thoughts[oid]})
+        return list(reversed(events))
+
     # -- anchors --------------------------------------------------------------------
 
     def anchor(self, name: str, thought: str, author: str = "agent", timestamp: str = None) -> str:

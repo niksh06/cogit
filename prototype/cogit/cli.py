@@ -213,6 +213,21 @@ def cmd_status(args):
 
 def cmd_log(args):
     repo = _open_repo(args)
+    fact_filter = args.introduced_fact or args.removed_fact
+    if fact_filter:
+        if args.reflog or (args.introduced_fact and args.removed_fact):
+            raise UserError("log: --introduced-fact/--removed-fact are mutually exclusive and incompatible with -g")
+        wanted = "introduced" if args.introduced_fact else "removed"
+        events = [e for e in repo.fact_events(fact_filter, args.ref) if e["event"] == wanted]
+        if args.json:
+            print(json.dumps(events, indent=2, sort_keys=True))
+            return 0
+        for event in events:
+            print(f"{event['event']}  {event['id']}")
+            print(f"author:   {event['author']}")
+            print(f"date:     {event['timestamp']}")
+            print(f"\n    {event['message']}\n")
+        return 0
     if args.reflog:
         entries = repo.reflog(args.ref or "HEAD")
         if args.json:
@@ -462,6 +477,8 @@ def build_parser():
     p = sub.add_parser("log", help="walk thought history (or reflog with -g)")
     p.add_argument("-g", dest="reflog", action="store_true", help="walk reflog instead of ancestry")
     p.add_argument("ref", nargs="?")
+    p.add_argument("--introduced-fact", metavar="FACT_ID", help="thoughts that introduced this fact")
+    p.add_argument("--removed-fact", metavar="FACT_ID", help="thoughts that removed this fact")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_log)
 

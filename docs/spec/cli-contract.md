@@ -171,6 +171,21 @@ MVP output includes:
 - operation;
 - message.
 
+### `cogit log --introduced-fact <fact-id> [<ref-or-id>]` / `--removed-fact`
+
+Lists thoughts that introduced or removed a fact in the selected ancestry
+(COG-019).
+
+Rules:
+
+- Exact fact ID only (abbreviations allowed); no semantic matching.
+- *introduced*: fact present in the thought's mindset and in no parent.
+- *removed*: fact absent from the thought's mindset and present in at
+  least one parent.
+- A re-introduced fact yields multiple events.
+- Scope is the selected ancestry (default `HEAD`), not all refs.
+- Mutually exclusive with each other and with `-g`.
+
 ### `cogit log -g [<ref>]`
 
 Walks reflog entries.

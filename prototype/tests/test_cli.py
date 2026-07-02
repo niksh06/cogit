@@ -195,6 +195,26 @@ class AcceptanceScenarioTests(CliHarness):
         # both json and shorthand -> user error
         self.run_cli("add-fact", json.dumps(doc), "--kind", "agent_decision", expect=1)
 
+    def test_log_fact_events(self):
+        a1 = self.add_fact("volatile")
+        t1 = self.commit("introduce", n=1)
+        self.run_cli("remove-fact", a1, "--reason", "superseded")
+        t2 = self.commit("remove", n=2)
+        out = self.run_cli("add-fact", json.dumps(fact_doc("volatile", when=ts(0))))
+        self.assertEqual(out.splitlines()[1].split()[-1], a1)  # same fact re-staged
+        t3 = self.commit("re-introduce", n=3)
+
+        introduced = json.loads(self.run_cli("log", "--introduced-fact", a1, "--json"))
+        self.assertEqual([e["id"] for e in introduced], [t3, t1])  # newest first
+        self.assertTrue(all(e["event"] == "introduced" for e in introduced))
+        removed = json.loads(self.run_cli("log", "--removed-fact", a1, "--json"))
+        self.assertEqual([e["id"] for e in removed], [t2])
+        # abbreviated fact id works; flags are mutually exclusive
+        short = a1[len("sha256:") : len("sha256:") + 12]
+        self.assertEqual(len(json.loads(self.run_cli("log", "--introduced-fact", short, "--json"))), 2)
+        self.run_cli("log", "--introduced-fact", a1, "--removed-fact", a1, expect=1)
+        self.run_cli("log", "-g", "--introduced-fact", a1, expect=1)
+
     def test_abbreviated_object_ids(self):
         a1 = self.add_fact("prefixed")
         t1 = self.commit("prefix test")
