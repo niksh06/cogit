@@ -136,6 +136,40 @@ class AcceptanceScenarioTests(CliHarness):
         branches = self.run_cli("branch")
         self.assertIn("* main", branches)
 
+    def test_add_fact_shorthand_matches_json_ids(self):
+        doc = fact_doc("shorthand-parity", when=ts(0))
+        json_out = self.run_cli("add-fact", json.dumps(doc))
+        short_out = self.run_cli(
+            "add-fact",
+            "--kind", "agent_decision", "--subject", "test",
+            "--predicate", "shorthand-parity", "--object", "yes",
+            "--source", "manual:test:fixture", "--confidence", "9000",
+            "--actor", "tester", "--method", "fixture",
+            "--asserted-at", ts(0),
+        )
+        self.assertEqual(json_out, short_out)  # identical claim and assertion IDs
+
+    def test_add_fact_shorthand_negates_and_validation(self):
+        doc = fact_doc("original", when=ts(0))
+        out = self.run_cli("add-fact", json.dumps(doc))
+        original_claim = out.splitlines()[0].split()[-1]
+        neg_out = self.run_cli(
+            "add-fact",
+            "--kind", "agent_decision", "--subject", "test",
+            "--predicate", "original", "--object-json", "false",
+            "--negates", original_claim,
+            "--source", "agent:review", "--confidence", "9500",
+            "--asserted-at", ts(1),
+        )
+        neg_claim = neg_out.splitlines()[0].split()[-1]
+        decoded = json.loads(self.run_cli("cat-object", neg_claim))
+        self.assertEqual(decoded["negates"], original_claim)
+        self.assertIs(decoded["object"], False)
+        # missing required shorthand flags -> user error
+        self.run_cli("add-fact", "--kind", "agent_decision", expect=1)
+        # both json and shorthand -> user error
+        self.run_cli("add-fact", json.dumps(doc), "--kind", "agent_decision", expect=1)
+
     def test_hash_object_without_write_does_not_mutate(self):
         doc = fact_doc("pure")["claim"]
         oid = self.run_cli("hash-object", "--type", "claim", json.dumps(doc)).strip()

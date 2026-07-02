@@ -7,8 +7,8 @@ import sys
 
 from .canonical import parse_json
 from .errors import CogitError, UserError
+from .objects import CLAIM_KINDS
 from .repo import Repository, init_repository, now_utc
-from .store import ObjectStore
 from .verify import verify_repository
 
 
@@ -69,9 +69,62 @@ def cmd_cat_object(args):
     return 0
 
 
+def _build_shorthand_doc(args):
+    """Build a claim+assertion document from add-fact shorthand flags (COG-027)."""
+    required = {"--kind": args.kind, "--subject": args.subject, "--predicate": args.predicate,
+                "--source": args.source, "--confidence": args.confidence}
+    missing = [flag for flag, value in required.items() if value is None]
+    if args.object_value is None and args.object_json is None:
+        missing.append("--object (or --object-json)")
+    if missing:
+        raise UserError(f"add-fact: shorthand form requires {', '.join(missing)}")
+    if args.object_value is not None and args.object_json is not None:
+        raise UserError("add-fact: use either --object or --object-json, not both")
+
+    obj_value = args.object_value if args.object_value is not None else parse_json(args.object_json)
+    qualifiers = {}
+    for pair in args.qualifier or []:
+        if "=" not in pair:
+            raise UserError(f"add-fact: --qualifier expects K=V, got '{pair}'")
+        key, value = pair.split("=", 1)
+        qualifiers[key] = value
+    source_type, _sep, source_uri = args.source.partition(":")
+    source = {"type": source_type}
+    if source_uri:
+        source["uri"] = source_uri
+
+    claim = {
+        "type": "claim",
+        "kind": args.kind,
+        "subject": args.subject,
+        "predicate": args.predicate,
+        "object": obj_value,
+        "qualifiers": qualifiers,
+    }
+    if args.negates:
+        claim["negates"] = args.negates if args.negates.startswith("sha256:") else "sha256:" + args.negates
+    assertion = {
+        "type": "assertion",
+        "status": "asserted",
+        "source": source,
+        "confidence_bps": args.confidence,
+        "asserted_at": args.asserted_at or now_utc(),
+        "actor": args.actor,
+        "method": {"type": args.method},
+    }
+    return {"claim": claim, "assertion": assertion}
+
+
 def cmd_add_fact(args):
     repo = _open_repo(args)
-    doc = _load_json_arg(args.fact)
+    if args.fact is not None and args.kind is not None:
+        raise UserError("add-fact: use either a JSON document or shorthand flags, not both")
+    if args.fact is not None:
+        doc = _load_json_arg(args.fact)
+    elif args.kind is not None:
+        doc = _build_shorthand_doc(args)
+    else:
+        raise UserError("add-fact: provide a JSON document or shorthand flags (--kind ...)")
     claim_oid, assertion_oid = repo.add_fact(doc)
     print(f"claim     {claim_oid}")
     print(f"staged    {assertion_oid}")
@@ -286,7 +339,19 @@ def build_parser():
     p.set_defaults(func=cmd_cat_object)
 
     p = sub.add_parser("add-fact", help="write claim+assertion and stage the assertion")
-    p.add_argument("fact", help='JSON file or inline {"claim": {...}, "assertion": {...}}')
+    p.add_argument("fact", nargs="?", help='JSON file or inline {"claim": {...}, "assertion": {...}}')
+    p.add_argument("--kind", choices=list(CLAIM_KINDS), help="shorthand: claim kind")
+    p.add_argument("--subject", help="shorthand: claim subject")
+    p.add_argument("--predicate", help="shorthand: claim predicate")
+    p.add_argument("--object", dest="object_value", help="shorthand: claim object (string)")
+    p.add_argument("--object-json", help="shorthand: claim object as JSON (bool/int/string)")
+    p.add_argument("--qualifier", action="append", metavar="K=V", help="shorthand: claim qualifier (repeatable)")
+    p.add_argument("--negates", help="shorthand: claim id this claim negates")
+    p.add_argument("--source", help="shorthand: source as type[:uri], e.g. agent:session-x")
+    p.add_argument("--confidence", type=int, help="shorthand: confidence in basis points (0-10000)")
+    p.add_argument("--actor", default="agent", help="shorthand: asserting actor")
+    p.add_argument("--method", default="cli", help="shorthand: method type")
+    p.add_argument("--asserted-at", dest="asserted_at", help="shorthand: ISO-8601 UTC override (default: now)")
     p.set_defaults(func=cmd_add_fact)
 
     p = sub.add_parser("remove-fact", help="stage removal of an active assertion")

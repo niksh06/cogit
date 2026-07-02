@@ -62,7 +62,7 @@ Rules:
 - Verifies object hash before printing.
 - Fails on missing, corrupt, or schema-invalid objects.
 
-### `cogit add-fact <json-or-file>`
+### `cogit add-fact [<json-or-file>] [shorthand flags]`
 
 Writes claim and assertion objects and stages the assertion in `index.json`.
 
@@ -75,8 +75,20 @@ Input is a fact document:
 }
 ```
 
+or the equivalent shorthand (COG-027):
+
+```sh
+cogit add-fact --kind agent_decision --subject cogit:mvp \
+  --predicate first_slice --object object_store \
+  --source manual:design-session --confidence 9500 \
+  [--qualifier k=v ...] [--negates <claim-id>] [--object-json <json>] \
+  [--actor agent] [--method cli] [--asserted-at <iso-utc>]
+```
+
 Rules:
 
+- Shorthand and equivalent JSON must produce identical object IDs;
+  `--asserted-at` defaults to now (UTC).
 - The `assertion.claim` reference is filled from the written claim
   automatically; if present, it must match.
 - Does not create a thought.
