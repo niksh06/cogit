@@ -712,6 +712,37 @@ class Repository:
             )
         return anchors
 
+    # -- facts / show (COG-028) --------------------------------------------------------
+
+    def facts(self, ref: str = None):
+        """Active facts of a thought, decoded enough to act on (pick IDs, judge beliefs)."""
+        thought_oid = self.resolve(ref or "HEAD")
+        rows = []
+        for aid in sorted(self._mindset_assertions(thought_oid)):
+            assertion = self._read_typed(aid, "assertion")
+            claim = self._read_typed(assertion["claim"], "claim")
+            rows.append(
+                {
+                    "assertion": aid,
+                    "claim": assertion["claim"],
+                    "kind": claim["kind"],
+                    "subject": claim["subject"],
+                    "predicate": claim["predicate"],
+                    "object": claim["object"],
+                    "negates": claim.get("negates"),
+                    "confidence_bps": assertion["confidence_bps"],
+                    "source": assertion["source"]["type"],
+                    "status": assertion["status"],
+                }
+            )
+        return {"thought": thought_oid, "facts": rows}
+
+    def show(self, ref: str = None):
+        """Thought header plus its active facts (git-show analogue)."""
+        thought_oid = self.resolve(ref or "HEAD")
+        thought = self._read_typed(thought_oid, "thought")
+        return {"id": thought_oid, **thought, "facts": self.facts(thought_oid)["facts"]}
+
     # -- status ---------------------------------------------------------------------
 
     def status(self):

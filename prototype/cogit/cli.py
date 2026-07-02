@@ -284,6 +284,47 @@ def cmd_blame_fact(args):
     return 0
 
 
+def _print_fact_rows(rows):
+    if not rows:
+        print("(no active facts)")
+        return
+    for row in rows:
+        neg = " negates!" if row["negates"] else ""
+        print(
+            f"{_short(row['assertion'])}  {row['kind']}  "
+            f"{row['subject']} {row['predicate']} {json.dumps(row['object'], ensure_ascii=False)}"
+            f"  conf={row['confidence_bps']} src={row['source']}{neg}"
+        )
+
+
+def cmd_facts(args):
+    repo = _open_repo(args)
+    result = repo.facts(args.ref)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+    print(f"facts at {_short(result['thought'])} ({len(result['facts'])} active)")
+    _print_fact_rows(result["facts"])
+    return 0
+
+
+def cmd_show(args):
+    repo = _open_repo(args)
+    result = repo.show(args.ref)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+    print(f"thought {result['id']}")
+    if len(result["parents"]) > 1:
+        print(f"merge:    {' '.join(_short(p) for p in result['parents'])}")
+    print(f"author:   {result['author']}")
+    print(f"date:     {result['timestamp']}")
+    print(f"op:       {result['operation']}")
+    print(f"\n    {result['message']}\n")
+    _print_fact_rows(result["facts"])
+    return 0
+
+
 def cmd_verify(args):
     repo = _open_repo(args)
     findings = verify_repository(repo)
@@ -412,6 +453,16 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_blame_fact)
+
+    p = sub.add_parser("facts", help="list active facts of a thought (default: HEAD)")
+    p.add_argument("ref", nargs="?")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_facts)
+
+    p = sub.add_parser("show", help="thought header plus its active facts")
+    p.add_argument("ref", nargs="?")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_show)
 
     p = sub.add_parser("verify", help="check repository health (reports, never repairs)")
     p.add_argument("--json", action="store_true")

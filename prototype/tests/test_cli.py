@@ -136,6 +136,31 @@ class AcceptanceScenarioTests(CliHarness):
         branches = self.run_cli("branch")
         self.assertIn("* main", branches)
 
+    def test_facts_and_show(self):
+        a1 = self.add_fact("belief-one")
+        a2 = self.add_fact("belief-two")
+        t1 = self.commit("two beliefs", n=1)
+        result = json.loads(self.run_cli("facts", "--json"))
+        self.assertEqual(result["thought"], t1)
+        by_assertion = {row["assertion"]: row for row in result["facts"]}
+        self.assertEqual(set(by_assertion), {a1, a2})
+        # enough to pick the right ID without cat-object: claim content is inline
+        self.assertEqual(
+            sorted(row["predicate"] for row in result["facts"]),
+            ["belief-one", "belief-two"],
+        )
+        text = self.run_cli("facts")
+        self.assertIn("belief-one", text)
+        self.assertIn("conf=9000", text)
+        shown = json.loads(self.run_cli("show", t1, "--json"))
+        self.assertEqual(shown["id"], t1)
+        self.assertEqual(shown["message"], "two beliefs")
+        self.assertEqual(len(shown["facts"]), 2)
+        # works via anchor deref too
+        self.run_cli("anchor", "m1", t1, "--timestamp", ts(2))
+        via_anchor = json.loads(self.run_cli("facts", "m1", "--json"))
+        self.assertEqual(via_anchor["thought"], t1)
+
     def test_add_fact_shorthand_matches_json_ids(self):
         doc = fact_doc("shorthand-parity", when=ts(0))
         json_out = self.run_cli("add-fact", json.dumps(doc))

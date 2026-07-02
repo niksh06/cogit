@@ -227,6 +227,29 @@ Rules:
 - No semantic text matching.
 - Linear traversal is acceptable in MVP.
 
+### `cogit facts [<ref-or-thought>]`
+
+Lists the active facts of a thought (default `HEAD`) with decoded claim
+content (COG-028).
+
+Output per fact includes:
+
+- short assertion ID (full with `--json`);
+- claim kind, subject, predicate, object;
+- confidence and source type;
+- a marker when the claim negates another claim.
+
+Rules:
+
+- Output is sufficient to pick IDs for `blame-fact`, `remove-fact`, and
+  `resolve` without `cat-object` chains.
+- Works for branches, anchors (dereferenced), and detached thoughts.
+
+### `cogit show [<ref-or-thought>]`
+
+Prints the thought header (ID, parents, author, date, operation, message)
+followed by its active facts, like `git show`.
+
 ### `cogit verify`
 
 Checks repository health.
