@@ -1,0 +1,16 @@
+[package]
+name = "cogit-core"
+version = "0.1.0"
+edition = "2021"
+description = "Cogit core: canonical JSON, content-addressed object store (ADR-0007/0010)"
+license = "Apache-2.0"
+
+[dependencies]
+# serde_json WITHOUT preserve_order: object keys serialize via BTreeMap,
+# i.e. sorted by Unicode code point — exactly the canonicalization profile.
+serde_json = "1"
+sha2 = "0.10"
+flate2 = "1"
+
+[dev-dependencies]
+tempfile = "3"

@@ -12,3 +12,4 @@ __pycache__/
 
 # Local agent/editor settings (not part of the product)
 .claude/settings.local.json
+/target/
