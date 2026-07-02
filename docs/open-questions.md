@@ -40,9 +40,7 @@ Status: Deferred
 
 ### OQ-009: Bisect oracle contract
 
-Question: What exit codes and inputs should `bisect-thought` use for agent quality checks?
-
-Status: Deferred
+Moved to Closed Questions as CQ-015 (implemented by COG-021, 2026-07-02).
 
 ### OQ-010: Reflog retention policy
 
@@ -71,6 +69,22 @@ Decision so far: secrets are forbidden; suspected secret writes are rejected. De
 Status: Deferred
 
 ## Closed Questions
+
+### CQ-015: Bisect oracle contract (was OQ-009)
+
+Answer: `cogit bisect-thought --good <id> --bad <id> --run <command>`.
+Probes are non-mutating: the oracle receives `COGIT_THOUGHT`,
+`COGIT_MINDSET`, and `COGIT_REPO` env vars and inspects state through
+read-only commands. Exit codes are git-bisect compatible: 0 good, 125
+skip/unknown, any other code below 128 bad, 128+ aborts. Skipped
+candidates near the answer are reported as suspects; an all-skipped range
+is inconclusive. A replayable probe log is printed and optionally written
+with `--log`.
+
+Closed by:
+
+- `issues/COG-021.md`
+- `docs/spec/cli-contract.md`
 
 ### CQ-014: License (was OQ-004)
 

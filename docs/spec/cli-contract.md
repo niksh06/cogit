@@ -246,6 +246,24 @@ Rules:
 - No semantic text matching.
 - Linear traversal is acceptable in MVP.
 
+### `cogit bisect-thought --good <id> --bad <id> --run <command>`
+
+Binary-searches the first bad thought between a known-good ancestor and a
+known-bad descendant (COG-021).
+
+Rules:
+
+- Probes never mutate the repository; the oracle gets `COGIT_THOUGHT`,
+  `COGIT_MINDSET`, `COGIT_REPO` env vars.
+- Oracle exit codes: `0` good, `125` skip/unknown, other `< 128` bad,
+  `>= 128` aborts the bisect.
+- Assumes a monotonic predicate along the topological candidate order
+  (primary use: linear histories).
+- Prints a replayable probe log; `--log <file>` also writes it to disk.
+- When skip verdicts leave more than one possible first-bad thought, the
+  remaining candidate range is reported and the command exits `1`
+  (inconclusive), mirroring git-bisect's "could be any of" behavior.
+
 ### `cogit facts [<ref-or-thought>]`
 
 Lists the active facts of a thought (default `HEAD`) with decoded claim

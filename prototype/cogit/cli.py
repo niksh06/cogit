@@ -363,6 +363,36 @@ def cmd_show(args):
     return 0
 
 
+def cmd_bisect_thought(args):
+    repo = _open_repo(args)
+    from .bisect import bisect_thought, command_runner
+
+    result = bisect_thought(repo, args.good, args.bad, command_runner(repo, args.run))
+    log_lines = [f"{entry['thought']} {entry['verdict']}" for entry in result["log"]]
+    if args.log_file:
+        with open(args.log_file, "w", encoding="utf-8") as handle:
+            handle.write(f"# bisect-thought good={args.good} bad={args.bad} run={args.run}\n")
+            handle.write("\n".join(log_lines) + "\n")
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["result"] == "found" else 1
+    for line in log_lines:
+        print(line)
+    if result["result"] == "inconclusive":
+        print("inconclusive: every remaining candidate was skipped")
+        for oid in result["range"]:
+            print(f"  ? {oid}")
+        return 1
+    thought = repo.store.read(result["first_bad"])
+    print(f"first bad thought: {result['first_bad']}")
+    print(f"message:  {thought['message']}")
+    print(f"author:   {thought['author']}")
+    print(f"date:     {thought['timestamp']}")
+    for oid in result["skipped_suspects"]:
+        print(f"warning: skipped candidate could be earlier: {oid}")
+    return 0
+
+
 def cmd_verify(args):
     repo = _open_repo(args)
     findings = verify_repository(repo)
@@ -508,6 +538,14 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_blame_fact)
+
+    p = sub.add_parser("bisect-thought", help="binary-search the first bad thought between good and bad")
+    p.add_argument("--good", required=True, help="known-good thought or ref")
+    p.add_argument("--bad", required=True, help="known-bad thought or ref")
+    p.add_argument("--run", required=True, help="oracle command: exit 0 good, 125 skip, else bad; gets COGIT_THOUGHT/COGIT_MINDSET/COGIT_REPO env")
+    p.add_argument("--log", dest="log_file", help="write a replayable probe log to this file")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_bisect_thought)
 
     p = sub.add_parser("facts", help="list active facts of a thought (default: HEAD)")
     p.add_argument("ref", nargs="?")
