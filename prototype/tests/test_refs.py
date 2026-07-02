@@ -64,6 +64,24 @@ class RefStoreTests(unittest.TestCase):
         with self.assertRaises(UserError):
             self.refs.update_ref("refs/heads/main", A, None, "two words", "commit", "r", TS)
 
+    def test_head_stale_expected_content_rejected(self):
+        # COG-014: a concurrent HEAD move must fail the write, not be overwritten
+        raw = self.refs.read_head_raw()
+        self.refs.write_head(A, None, "agent", "checkout", "detach", TS, expected_raw=raw)
+        with self.assertRaises(ConcurrentUpdateError):
+            self.refs.write_head(B, A, "agent", "checkout", "stale", TS, expected_raw=raw)
+        # HEAD unchanged after the failed write, and only one reflog entry
+        self.assertEqual(self.refs.read_head(), ("detached", A))
+        self.assertEqual(len(self.refs.read_reflog("HEAD")), 1)
+
+    def test_head_lock_contention(self):
+        lock = os.path.join(self.repo.cogit_dir, "HEAD.lock")
+        with open(lock, "w"):
+            pass
+        with self.assertRaises(ConcurrentUpdateError):
+            self.refs.write_head(A, None, "agent", "checkout", "locked", TS, expected_raw="x")
+        os.unlink(lock)
+
 
 if __name__ == "__main__":
     unittest.main()

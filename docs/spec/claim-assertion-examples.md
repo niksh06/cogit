@@ -207,6 +207,19 @@ Removal staged in index:
 
 Meaning: activating the negated assertion requires removing the original active assertion with explicit reason.
 
+Enforcement (COG-015):
+
+- `commit-thought` rejects a mindset that holds a claim and its negation
+  together, and rejects the removal of the negated original with any reason
+  other than `refuted`.
+- `merge` treats a claim and everything in its `negates` chain as one
+  proposition family: sides that touch the same family differently produce a
+  conflict instead of a silent union.
+- `cogit resolve --keep <negating-assertion>` records the original's removal
+  with reason `refuted` automatically.
+- `verify` warns (`contradictory-mindset`) about historical mindsets that
+  hold a negation pair.
+
 ## Future Test Vector Fields
 
 Each finalized example should add:

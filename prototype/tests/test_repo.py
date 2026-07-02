@@ -234,6 +234,102 @@ class RepositoryWorkflowTests(unittest.TestCase):
         merge_thought = self.repo.commit_thought("merge drop", "agent", ts(7))
         self.assertEqual(self.repo._mindset_assertions(merge_thought), set())
 
+    # -- negation (COG-015, invariants 24-25) --------------------------------------
+
+    def negation_doc(self, original_claim_oid, confidence=9500):
+        doc = fact_doc("base", obj=False, confidence=confidence)
+        doc["claim"]["negates"] = original_claim_oid
+        return doc
+
+    def test_contradictory_commit_rejected_then_refute_flow(self):
+        claim_oid, a0 = (None, None)
+        claim_oid, a0 = self.repo.add_fact(fact_doc("base"))
+        self.repo.commit_thought("believe", "agent", ts(0))
+        # activating the negation while the original stays active -> reject
+        self.repo.add_fact(self.negation_doc(claim_oid))
+        with self.assertRaises(UserError):
+            self.repo.commit_thought("contradiction", "agent", ts(1))
+        # proper flow: remove the original with reason 'refuted'
+        self.repo.remove_fact(a0, "refuted")
+        t2 = self.repo.commit_thought("refute", "agent", ts(2))
+        mindset = self.repo._mindset_assertions(t2)
+        self.assertNotIn(a0, mindset)
+        self.assertEqual(len(mindset), 1)
+
+    def test_wrong_removal_reason_for_negated_original_rejected(self):
+        claim_oid, a0 = self.repo.add_fact(fact_doc("base"))
+        self.repo.commit_thought("believe", "agent", ts(0))
+        self.repo.add_fact(self.negation_doc(claim_oid))
+        self.repo.remove_fact(a0, "superseded")
+        with self.assertRaises(UserError):
+            self.repo.commit_thought("wrong reason", "agent", ts(1))
+
+    def test_merge_negation_split_conflicts_and_refuted_resolution(self):
+        claim_oid, a0 = self.repo.add_fact(fact_doc("base"))
+        self.repo.commit_thought("base", "agent", ts(0))
+        self.repo.branch("side", timestamp=ts(1))
+        # ours strengthens the belief with a second assertion
+        _c, a_ours = self.repo.add_fact(fact_doc("base", confidence=9900))
+        self.repo.commit_thought("strengthen", "agent", ts(2))
+        # theirs refutes it properly on their branch
+        self.repo.checkout("side", timestamp=ts(3))
+        _neg_claim, a_neg = self.repo.add_fact(self.negation_doc(claim_oid))
+        self.repo.remove_fact(a0, "refuted")
+        self.repo.commit_thought("refute", "agent", ts(4))
+        self.repo.checkout("main", timestamp=ts(5))
+        result = self.repo.merge("side", timestamp=ts(6))
+        # the whole proposition family is one conflict, never a silent union
+        self.assertEqual(result["result"], "conflicts")
+        self.assertEqual(len(result["conflicts"]), 1)
+        conflict = result["conflicts"][0]
+        self.assertEqual(conflict["claim"], claim_oid)  # group root
+        self.assertIn(a_neg, conflict["theirs"])
+        self.assertIn(a_ours, conflict["ours"])
+        # keeping the negation refutes the originals with the right reason
+        self.repo.resolve_conflict(claim_oid, keep=a_neg)
+        from cogit.index_state import load_index
+
+        reasons = {e["id"]: e["reason"] for e in load_index(self.repo.cogit_dir)["removed_facts"]}
+        self.assertEqual(reasons[a0], "refuted")
+        merge_thought = self.repo.commit_thought("merge refutation", "agent", ts(7))
+        self.assertEqual(self.repo._mindset_assertions(merge_thought), {a_neg})
+
+    def test_clean_merge_of_proper_refutation_fast_path(self):
+        claim_oid, a0 = self.repo.add_fact(fact_doc("base"))
+        self.repo.commit_thought("base", "agent", ts(0))
+        self.repo.branch("side", timestamp=ts(1))
+        # ours does unrelated work
+        self.repo.add_fact(fact_doc("unrelated"))
+        self.repo.commit_thought("other", "agent", ts(2))
+        # theirs refutes the base fact properly
+        self.repo.checkout("side", timestamp=ts(3))
+        _nc, a_neg = self.repo.add_fact(self.negation_doc(claim_oid))
+        self.repo.remove_fact(a0, "refuted")
+        self.repo.commit_thought("refute", "agent", ts(4))
+        self.repo.checkout("main", timestamp=ts(5))
+        result = self.repo.merge("side", timestamp=ts(6))
+        self.assertEqual(result["result"], "staged")  # no conflict: ours didn't touch the family
+        merge_thought = self.repo.commit_thought("merge", "agent", ts(7))
+        mindset = self.repo._mindset_assertions(merge_thought)
+        self.assertIn(a_neg, mindset)
+        self.assertNotIn(a0, mindset)
+
+    def test_verify_warns_on_contradictory_mindset(self):
+        # build a contradictory mindset via low-level store writes (bypassing commit checks)
+        claim_oid, a0 = self.repo.add_fact(fact_doc("base"))
+        neg_doc = self.negation_doc(claim_oid)
+        neg_claim = dict(neg_doc["claim"])
+        neg_claim_oid = self.repo.store.write(neg_claim)
+        neg_assertion = dict(neg_doc["assertion"])
+        neg_assertion["claim"] = neg_claim_oid
+        a_neg = self.repo.store.write(neg_assertion)
+        self.repo.store.write(
+            {"type": "mindset", "assertions": sorted([a0, a_neg]), "created_at": ts(1)}
+        )
+        findings = verify_repository(self.repo)
+        self.assertTrue(any(f["code"] == "contradictory-mindset" for f in findings))
+        self.assertTrue(all(f["severity"] == "warning" for f in findings if f["code"] == "contradictory-mindset"))
+
     # -- blame -----------------------------------------------------------------
 
     def test_blame_first_introducer_not_last_modifier(self):

@@ -159,6 +159,10 @@ Rules:
 
 - Never write mutable files in place.
 - Ref updates must check expected old target.
+- `HEAD` updates use the same lockfile protocol with an expected-old-content
+  check under the lock; symbolic (`ref: ...`) and detached forms are
+  compared verbatim, and a concurrent move fails with the concurrency exit
+  code instead of overwriting.
 - Failed ref updates must not partially update the ref.
 - Objects written before a failed ref update may remain unreachable.
 - Reflog append failure after ref update is an error that must be surfaced.

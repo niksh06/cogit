@@ -275,6 +275,7 @@ class Repository:
         base_set = self._base_assertions(index)
         removed_ids = {entry["id"] for entry in index["removed_facts"]}
         new_assertions = sorted((base_set | set(index["staged_facts"])) - removed_ids)
+        self._check_negation_consistency(new_assertions, index)
 
         mindset_oid = self.store.write(
             {"type": "mindset", "assertions": new_assertions, "created_at": timestamp}
@@ -302,10 +303,56 @@ class Repository:
             self.refs.update_ref(branch, thought_oid, parent, author, operation, reason, timestamp)
             self.refs.append_reflog("HEAD", parent, thought_oid, author, operation, reason, timestamp)
         else:
-            self.refs.write_head(thought_oid, parent, author, operation, reason, timestamp)
+            # detached: HEAD content must still be the parent we committed from
+            self.refs.write_head(
+                thought_oid, parent, author, operation, reason, timestamp, expected_raw=parent
+            )
         # Clear index only after the ref moved (invariant: mutation ordering).
         save_index(self.cogit_dir, dict(EMPTY_INDEX))
         return thought_oid
+
+    # -- negation (invariants 24-25) -------------------------------------------------
+
+    def _negation_group(self, claim_oid: str) -> str:
+        """Follow the negates chain to its root claim (the proposition family)."""
+        seen = set()
+        current = claim_oid
+        while True:
+            if current in seen:
+                raise CorruptionError(f"claims: negation cycle involving {current}")
+            seen.add(current)
+            negated = self._read_typed(current, "claim").get("negates")
+            if negated is None:
+                return current
+            current = negated
+
+    def _check_negation_consistency(self, assertion_ids, index):
+        """Reject a mindset holding both a claim and its negation (invariant 25)."""
+        claim_of = {aid: self._read_typed(aid, "assertion")["claim"] for aid in assertion_ids}
+        active_claims = set(claim_of.values())
+        for aid, claim_oid in sorted(claim_of.items()):
+            negated = self._read_typed(claim_oid, "claim").get("negates")
+            if negated is not None and negated in active_claims:
+                raise UserError(
+                    f"commit-thought: contradictory mindset — {aid} activates a claim that negates "
+                    f"{negated}, which is still active; remove the original assertion with reason "
+                    "'refuted' first (invariant 25)"
+                )
+        # When a negation is being activated, the original's removal must say why.
+        staged_negated = set()
+        for aid in index["staged_facts"]:
+            claim_oid = self._read_typed(aid, "assertion")["claim"]
+            negated = self._read_typed(claim_oid, "claim").get("negates")
+            if negated is not None:
+                staged_negated.add(negated)
+        if staged_negated:
+            for entry in index["removed_facts"]:
+                removed_claim = self._read_typed(entry["id"], "assertion")["claim"]
+                if removed_claim in staged_negated and entry["reason"] != "refuted":
+                    raise UserError(
+                        f"commit-thought: removal of {entry['id']} must use reason 'refuted' — "
+                        "a staged assertion negates its claim (invariant 25)"
+                    )
 
     # -- branches / checkout -------------------------------------------------------
 
@@ -336,7 +383,9 @@ class Repository:
                 "commit or clear it first — MVP blocks checkout with a dirty index"
             )
         timestamp = timestamp or now_utc()
-        _branch, old_thought = self.head_info()
+        old_raw = self.refs.read_head_raw()
+        kind, value = self.refs.parse_head(old_raw)
+        old_thought = self.refs.read_ref(value) if kind == "symbolic" else value
 
         branch_ref = f"refs/heads/{target}" if not target.startswith("refs/") else target
         is_branch = False
@@ -348,14 +397,18 @@ class Repository:
 
         if is_branch:
             reason = f"moving to branch {target}"
-            self.refs.write_head(f"ref: {branch_ref}", old_thought, actor, "checkout", reason, timestamp)
+            self.refs.write_head(
+                f"ref: {branch_ref}", old_thought, actor, "checkout", reason, timestamp, expected_raw=old_raw
+            )
             mode = "branch"
             new_thought = self.refs.read_ref(branch_ref)
         else:
             new_thought = self.resolve(target)
             self._read_typed(new_thought, "thought")
             reason = f"detached at {target}"
-            self.refs.write_head(new_thought, old_thought, actor, "checkout", reason, timestamp)
+            self.refs.write_head(
+                new_thought, old_thought, actor, "checkout", reason, timestamp, expected_raw=old_raw
+            )
             mode = "detached"
         save_index(self.cogit_dir, dict(EMPTY_INDEX))
         return mode, new_thought
@@ -469,7 +522,7 @@ class Repository:
                 self.refs.update_ref(branch, theirs, ours, actor, "merge", reason, timestamp)
                 self.refs.append_reflog("HEAD", ours, theirs, actor, "merge", reason, timestamp)
             else:
-                self.refs.write_head(theirs, ours, actor, "merge", reason, timestamp)
+                self.refs.write_head(theirs, ours, actor, "merge", reason, timestamp, expected_raw=ours)
             save_index(self.cogit_dir, dict(EMPTY_INDEX))
             return {"result": "fast-forward", "thought": theirs}
 
@@ -483,62 +536,78 @@ class Repository:
         added_theirs = theirs_set - base_set
         removed_theirs = base_set - theirs_set
 
-        claims = self._claims_by_assertion(added_ours | added_theirs | removed_ours | removed_theirs)
+        # Conflict detection groups by NEGATION GROUP (a claim plus everything
+        # in its `negates` chain), so "ours strengthens X, theirs activates
+        # not-X" collides instead of silently unioning (invariants 24-25).
+        claims = self._claims_by_assertion(base_set | ours_set | theirs_set)
+        groups = {aid: self._negation_group(claim_oid) for aid, claim_oid in claims.items()}
 
-        def by_claim(assertion_ids):
+        def by_group(assertion_ids):
             grouped = {}
             for aid in assertion_ids:
-                grouped.setdefault(claims[aid], set()).add(aid)
+                grouped.setdefault(groups[aid], set()).add(aid)
             return grouped
 
-        added_ours_by_claim = by_claim(added_ours)
-        added_theirs_by_claim = by_claim(added_theirs)
-        removed_ours_by_claim = by_claim(removed_ours)
-        removed_theirs_by_claim = by_claim(removed_theirs)
+        added_ours_by_group = by_group(added_ours)
+        added_theirs_by_group = by_group(added_theirs)
+        removed_ours_by_group = by_group(removed_ours)
+        removed_theirs_by_group = by_group(removed_theirs)
 
         conflicts = []
-        conflicted_claims = set()
-        for claim_oid in sorted(set(added_ours_by_claim) | set(added_theirs_by_claim)):
-            ours_added = added_ours_by_claim.get(claim_oid, set())
-            theirs_added = added_theirs_by_claim.get(claim_oid, set())
-            # add/add with different assertions about one claim
+        conflicted_groups = set()
+        for group_oid in sorted(set(added_ours_by_group) | set(added_theirs_by_group)):
+            ours_added = added_ours_by_group.get(group_oid, set())
+            theirs_added = added_theirs_by_group.get(group_oid, set())
+            # add/add with different assertions in one proposition family
             add_add = ours_added and theirs_added and ours_added != theirs_added
-            # change/delete: one side added about a claim the other side removed from
-            change_delete = (ours_added and claim_oid in removed_theirs_by_claim) or (
-                theirs_added and claim_oid in removed_ours_by_claim
+            # change/delete: one side added where the other side removed
+            change_delete = (ours_added and group_oid in removed_theirs_by_group) or (
+                theirs_added and group_oid in removed_ours_by_group
             )
-            if add_add or change_delete:
-                conflicted_claims.add(claim_oid)
-                base_for_claim = sorted(
-                    aid for aid in base_set if claims.get(aid) == claim_oid
-                )
+            # negation split: both sides added, one of them on a negating claim
+            negation_split = (
+                ours_added
+                and theirs_added
+                and any(claims[aid] != group_oid for aid in ours_added | theirs_added)
+            )
+            if add_add or change_delete or negation_split:
+                conflicted_groups.add(group_oid)
                 conflicts.append(
                     {
-                        "claim": claim_oid,
+                        "claim": group_oid,
                         "ours": sorted(ours_added),
                         "theirs": sorted(theirs_added),
-                        "base": base_for_claim,
+                        "base": sorted(aid for aid in base_set if groups.get(aid) == group_oid),
                     }
                 )
 
         def unconflicted(assertion_ids):
-            return {aid for aid in assertion_ids if claims[aid] not in conflicted_claims}
+            return {aid for aid in assertion_ids if groups[aid] not in conflicted_groups}
 
         result = (
             (base_set - removed_ours - removed_theirs)
             | unconflicted(added_ours)
             | unconflicted(added_theirs)
         )
+        # keep whole conflicted families out of the auto-merged result
+        result = {aid for aid in result if groups[aid] not in conflicted_groups}
 
         ours_mindset = self._read_typed(ours, "thought")["mindset"]
         index = dict(EMPTY_INDEX)
         index["base_mindset"] = ours_mindset
         index["staged_facts"] = sorted(result - ours_set)
-        # Removals on conflicted claims wait for resolution; auto-apply the rest.
+        # Removals in conflicted families wait for resolution; auto-apply the rest.
+        # A removal whose claim is negated by an incoming staged assertion is a
+        # refutation and must say so (invariant 25).
+        staged_negated = set()
+        for aid in index["staged_facts"]:
+            negated = self._read_typed(claims[aid], "claim").get("negates")
+            if negated is not None:
+                staged_negated.add(negated)
         index["removed_facts"] = [
-            {"id": aid, "reason": "merge"}
+            {"id": aid, "reason": "refuted" if claims[aid] in staged_negated else "merge"}
             for aid in sorted(ours_set - result)
-            if claims.get(aid) not in conflicted_claims
+            if groups.get(aid) not in conflicted_groups
         ]
         index["conflicts"] = conflicts
         index["merge"] = {"ours": ours, "theirs": theirs, "base": base}
@@ -571,9 +640,18 @@ class Repository:
         for aid in sorted(kept - active):
             index["staged_facts"].append(aid)
         index["staged_facts"] = sorted(set(index["staged_facts"]) - (candidates - kept))
+        # Choosing a negation over the original IS a refutation (invariant 25).
+        kept_negates = set()
+        for aid in kept:
+            kept_claim = self._read_typed(aid, "assertion")["claim"]
+            negated = self._read_typed(kept_claim, "claim").get("negates")
+            if negated is not None:
+                kept_negates.add(negated)
         for aid in sorted((candidates & base_set) - kept):
             if all(removed["id"] != aid for removed in index["removed_facts"]):
-                index["removed_facts"].append({"id": aid, "reason": "merge-conflict-resolution"})
+                removed_claim = self._read_typed(aid, "assertion")["claim"]
+                reason = "refuted" if removed_claim in kept_negates else "merge-conflict-resolution"
+                index["removed_facts"].append({"id": aid, "reason": reason})
         index["removed_facts"].sort(key=lambda removed: removed["id"])
         index["conflicts"] = [c for c in index["conflicts"] if c["claim"] != claim_oid]
         save_index(self.cogit_dir, index)

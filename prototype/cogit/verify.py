@@ -73,6 +73,24 @@ def verify_repository(repo):
         elif obj["type"] == "anchor":
             check_link(oid, obj["target"], "thought", "missing-anchor-target")
 
+    # -- contradictory mindsets (invariants 24-25; warning, not corruption) --------
+    for oid, obj in sorted(objects.items()):
+        if obj["type"] != "mindset":
+            continue
+        active_claims = set()
+        for aid in obj["assertions"]:
+            assertion = objects.get(aid)
+            if assertion is not None and assertion["type"] == "assertion":
+                active_claims.add(assertion["claim"])
+        for claim_oid in sorted(active_claims):
+            claim = objects.get(claim_oid)
+            if claim is not None and claim.get("negates") in active_claims:
+                _finding(
+                    findings, "warning", "contradictory-mindset",
+                    f"{oid} holds a claim and its negation together "
+                    f"({claim_oid} negates {claim['negates']})",
+                )
+
     # -- HEAD and refs -------------------------------------------------------------
     reachable_tips = []
     try:

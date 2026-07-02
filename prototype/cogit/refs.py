@@ -43,14 +43,16 @@ class RefStore:
 
     # -- HEAD ---------------------------------------------------------------
 
-    def read_head(self):
-        """Return ('symbolic', refname) or ('detached', oid)."""
+    def read_head_raw(self) -> str:
         path = os.path.join(self.cogit_dir, "HEAD")
         try:
             with open(path, "r", encoding="utf-8") as handle:
-                content = handle.read().strip()
+                return handle.read().strip()
         except FileNotFoundError as exc:
             raise CorruptionError("refs: HEAD missing") from exc
+
+    def parse_head(self, content: str):
+        """Return ('symbolic', refname) or ('detached', oid) for raw HEAD content."""
         if content.startswith("ref: "):
             refname = content[len("ref: ") :].strip()
             validate_ref_name(refname)
@@ -59,14 +61,22 @@ class RefStore:
             return "detached", content
         raise CorruptionError(f"refs: HEAD invalid: '{content}'")
 
-    def write_head(self, value, old_head_target, actor, operation, reason, timestamp):
-        """Point HEAD at 'ref: refs/heads/x' or a detached oid, with reflog."""
+    def read_head(self):
+        return self.parse_head(self.read_head_raw())
+
+    def write_head(self, value, old_head_target, actor, operation, reason, timestamp, expected_raw=None):
+        """Point HEAD at 'ref: refs/heads/x' or a detached oid, with reflog.
+
+        expected_raw, when given, is the raw HEAD content the caller observed;
+        it is re-checked under the lock so a concurrent HEAD move fails with
+        exit code 4 instead of being silently overwritten (COG-014).
+        """
         if value.startswith("ref: "):
             validate_ref_name(value[len("ref: ") :])
         elif not is_oid(value):
             raise UserError(f"refs: invalid HEAD value '{value}'")
         path = os.path.join(self.cogit_dir, "HEAD")
-        self._locked_replace(path, value + "\n")
+        self._locked_replace(path, value + "\n", expected=expected_raw)
         self.append_reflog("HEAD", old_head_target, self._head_log_target(value), actor, operation, reason, timestamp)
 
     def _head_log_target(self, head_value: str) -> str:
@@ -178,14 +188,29 @@ class RefStore:
 
     # -- shared helpers ---------------------------------------------------------
 
-    def _locked_replace(self, path, content):
-        """Replace a mutable file through <path>.lock + atomic rename."""
+    def _locked_replace(self, path, content, expected=None):
+        """Replace a mutable file through <path>.lock + atomic rename.
+
+        When expected is not None, the current content is re-read under the
+        lock and must match (stripped) or ConcurrentUpdateError is raised.
+        """
         lock_path = path + ".lock"
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError as exc:
             raise ConcurrentUpdateError(f"refs: {path} is locked by another process") from exc
         try:
+            if expected is not None:
+                try:
+                    with open(path, "r", encoding="utf-8") as current_handle:
+                        current = current_handle.read().strip()
+                except FileNotFoundError:
+                    current = None
+                if current != expected.strip():
+                    raise ConcurrentUpdateError(
+                        f"refs: {os.path.basename(path)} moved concurrently "
+                        f"(expected '{expected.strip()}', found '{current}')"
+                    )
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 fd = None
                 handle.write(content)

@@ -13,7 +13,10 @@ or context assembly. It answers audit questions:
 - How did `HEAD` or a hypothesis branch move, and how do I recover an
   abandoned reasoning path?
 
-See `docs/adr/0002-provenance-not-retrieval-memory.md` for the boundary.
+See `docs/adr/0002-provenance-not-retrieval-memory.md` for the boundary, and
+`docs/adr/0011-why-not-plain-git.md` for why this is a standalone engine
+rather than a convention over Git (short version: Git cannot merge or blame
+*propositions*, only lines in files).
 
 ## Status
 
