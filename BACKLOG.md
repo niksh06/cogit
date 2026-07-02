@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T14:30:00+03:00
+updated_datetime: 2026-07-02T15:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -29,6 +29,9 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-027 | Shorthand fact input for `add-fact` (incl. `--negates`) | `issues/COG-027.md` | commit `2ebe3ee`; parity test: shorthand == JSON object IDs |
 | COG-028 | `cogit facts` / `cogit show` porcelain | `issues/COG-028.md` | commit `3e3acac`; `test_cli.py::test_facts_and_show` |
 | COG-025 | Abbreviated object-id prefixes + `--json` on all porcelain commands | CLI contract | commit `c2fb017`; 77 tests green 2026-07-02 |
+| COG-019 | `log --introduced-fact` / `--removed-fact` event queries | `issues/COG-019.md` | commit `ad1b522`; re-introduction test in `test_cli.py` |
+| COG-021 | `bisect-thought` with oracle contract (closed OQ-009 as CQ-015) | `issues/COG-021.md` | commit `f9ec330`; `test_bisect.py` incl. skip range + real-oracle CLI run |
+| COG-022 | `count-objects` pressure metrics with `[maintenance]` thresholds | `issues/COG-022.md` | `test_maintenance.py`; 86 tests green 2026-07-02; `gc --auto` deferred until compaction exists |
 
 ## Open — next
 
@@ -41,10 +44,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-018 | Notes-like annotations without rewriting objects | P1 | US-017 |
-| COG-019 | `log --introduced-fact` / `--removed-fact` queries | P1 | US-018 |
 | COG-020 | Conflict resolution memory (rerere-like) | P1 | US-019, OQ-008 |
-| COG-021 | `bisect-thought` with oracle contract | P1 | US-020, OQ-009 |
-| COG-022 | `count-objects` and maintenance thresholds | P1 | US-021, US-022, ADR-0006 |
 | COG-023 | Secret detection v2 beyond pattern heuristics | P2 | OQ-013 |
 | COG-024 | Reflog retention policy | P2 | OQ-010 |
 | COG-026 | Trust layer: signatures, quarantine, imports | P2 | US-023, US-024, OQ-012 |

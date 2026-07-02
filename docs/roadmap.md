@@ -12,8 +12,11 @@ Cogit grows from a local provenance tool into a reliable audit layer for agents.
 
 Phases 0–3 are complete in the Python reference prototype (ADR-0010):
 all MVP stories US-001..US-016 pass acceptance tests
-(`prototype/tests/`, 65 tests), object-format vectors are frozen, and the
-repository stays inspectable through `.cogit/`. Work queue lives in
+(`prototype/tests/`, 86 tests), object-format vectors are frozen, and the
+repository stays inspectable through `.cogit/`. Phase 4 is partially done
+(fact-event log queries COG-019, `bisect-thought` COG-021; annotations and
+rerere remain). Phase 5 is partially done (`count-objects` with thresholds
+COG-022; `gc --auto` deferred until compaction exists). Work queue lives in
 `BACKLOG.md`; the Rust production implementation is COG-013.
 
 ## Phase 0: Specification And Guardrails — DONE

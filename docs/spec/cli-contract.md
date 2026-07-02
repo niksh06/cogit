@@ -246,6 +246,21 @@ Rules:
 - No semantic text matching.
 - Linear traversal is acceptable in MVP.
 
+### `cogit count-objects`
+
+Reports repository pressure metrics (COG-022, ADR-0006): loose objects by
+type, corrupt-object count, disk bytes, head/anchor counts, reflog entries
+and bytes, stale tmp files.
+
+Rules:
+
+- Never mutates the repository.
+- Reads object headers only; unreadable objects are counted as corrupt,
+  never fatal (this is a metrics scan, `verify` is the health authority).
+- Warns when thresholds are exceeded; defaults follow ADR-0006 and can be
+  overridden in a `[maintenance]` config section (`looseObjectsWarn`,
+  `refsWarn`, `reflogEntriesWarn`).
+
 ### `cogit bisect-thought --good <id> --bad <id> --run <command>`
 
 Binary-searches the first bad thought between a known-good ancestor and a

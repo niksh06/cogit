@@ -363,6 +363,25 @@ def cmd_show(args):
     return 0
 
 
+def cmd_count_objects(args):
+    repo = _open_repo(args)
+    from .maintenance import count_objects
+
+    result = count_objects(repo)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    types = ", ".join(f"{t} {n}" for t, n in sorted(result["by_type"].items()) if n)
+    print(f"objects:  {result['loose_objects']} loose ({types or 'none'}), {result['corrupt_objects']} corrupt")
+    print(f"disk:     {result['disk_bytes']} bytes")
+    print(f"refs:     {result['heads']} heads, {result['anchors']} anchors")
+    print(f"reflog:   {result['reflog_entries']} entries, {result['reflog_bytes']} bytes")
+    print(f"tmp:      {result['tmp_files']} stale files")
+    for warning in result["warnings"]:
+        print(f"warning: {warning}")
+    return 0
+
+
 def cmd_bisect_thought(args):
     repo = _open_repo(args)
     from .bisect import bisect_thought, command_runner
@@ -538,6 +557,10 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_blame_fact)
+
+    p = sub.add_parser("count-objects", help="repository pressure metrics (never mutates)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_count_objects)
 
     p = sub.add_parser("bisect-thought", help="binary-search the first bad thought between good and bad")
     p.add_argument("--good", required=True, help="known-good thought or ref")
