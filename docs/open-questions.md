@@ -60,9 +60,13 @@ Status: Deferred
 
 Question: How should MVP detect suspected secrets well enough to reject writes?
 
-Decision so far: secrets are forbidden; suspected secret writes are rejected. Detection details remain open.
+Decision so far (narrowed by COG-023): three local layers — known-shape
+patterns, credential-in-URL/assignment shapes, and an entropy heuristic for
+opaque tokens with explicit false-positive guards (object IDs, hex, code
+identifiers must pass). Still open: pluggable scanner-grade detection
+(gitleaks-class rulesets) for enterprise use.
 
-Status: Deferred
+Status: Deferred (narrowed)
 
 ## Closed Questions
 
