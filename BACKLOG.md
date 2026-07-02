@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T12:00:00+03:00
+updated_datetime: 2026-07-02T12:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -20,6 +20,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-008 | Branch/checkout/detach, log, log -g, diff, status, anchors | US-008..US-011, US-015, US-016 | `prototype/tests/test_repo.py`, `test_cli.py` |
 | COG-009 | Conservative claim-level merge with conflicts, resolve, merge thoughts | US-012 | `test_repo.py` merge tests, `test_cli.py::test_merge_conflict_flow` |
 | COG-010 | blame-fact (first introducer), verify (corruption/missing links/dangling), CLI with contract exit codes | US-013, US-014 | `test_repo.py`, `test_cli.py` (65 tests green 2026-07-02) |
+| COG-017 | Repo housekeeping: init product VCS, exclude `git/` reference tree | `issues/COG-017.md` | initial commit `4585548`; tree clean, `git/`/`.venv` untracked, 59 files, 2026-07-02 |
 
 ## Open — next
 
@@ -31,7 +32,6 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-014 | Atomic symbolic-HEAD updates (old-value check on HEAD writes) | P1 | `issues/COG-014.md` |
 | COG-015 | Negation-aware merge and commit checks (invariants 24–25) | P1 | `issues/COG-015.md` |
 | COG-016 | License and open-source posture (OQ-004) | P1 | `issues/COG-016.md` |
-| COG-017 | Repo housekeeping: exclude `git/` reference tree, init product VCS | P1 | `issues/COG-017.md` |
 
 ## Open — later (P1/P2 stories, unscoped)
 
