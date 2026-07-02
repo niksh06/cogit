@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T18:00:00+03:00
+updated_datetime: 2026-07-02T21:00:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -38,12 +38,12 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-024 | Reflog retention: explicit `reflog-expire` with dry-run and config default (closed OQ-010 as CQ-018) | commit `18e39a8` | `test_refs.py::test_reflog_expire`; recovery playbook updated |
 | COG-030 | `add-fact --commit` micro-commit + stdin input (model-review finding) | `issues/COG-030.md` | `test_cli.py`: micro-flow, dirty-index refusal, stdin id parity |
 | COG-031 | `cogit recap` belief-state digest for context recovery (model-review finding) | `issues/COG-031.md` | `test_cli.py::test_recap`; 108 tests green 2026-07-02 |
+| COG-013 | Rust port: `cogit-core` + `cogit-cli`, full command parity, golden vectors byte-for-byte | `issues/COG-013.md`, ADR-0007 | `cargo test` (12 tests, clippy clean); `tools/interop-test.sh`: Python↔Rust drive one repository interchangeably (ids, conflicts, rerere fingerprints, annotations, metrics all agree) |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-013 | Rust `cogit-core` port reproducing frozen vectors — in progress | P1 | `issues/COG-013.md`, ADR-0007 |
 | COG-029 | MCP server for real agent usage | P0 (usage phase) | `issues/COG-029.md` |
 | COG-032 | Claim-modeling cookbook (model-review finding) | P1 | `issues/COG-032.md` |
 

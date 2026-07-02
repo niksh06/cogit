@@ -1,0 +1,15 @@
+[package]
+name = "cogit-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Cogit CLI (docs/spec/cli-contract.md) over cogit-core"
+license = "Apache-2.0"
+
+[[bin]]
+name = "cogit"
+path = "src/main.rs"
+
+[dependencies]
+cogit-core = { path = "../cogit-core" }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }

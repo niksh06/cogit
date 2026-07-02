@@ -1,19 +1,43 @@
 use std::fmt;
 
-/// Error classes mirror the CLI exit-code contract of the reference
-/// implementation: user errors (1) vs corruption (3).
+/// Error classes mirror the CLI exit-code contract
+/// (docs/spec/cli-contract.md).
 #[derive(Debug)]
 pub enum CoreError {
+    /// Invalid input, unresolved conflict, verification failure (exit 1).
     User(String),
+    /// No repository found or invalid layout (exit 2).
+    RepoNotFound(String),
+    /// Corruption detected (exit 3).
     Corruption(String),
+    /// Lock contention or old-target mismatch (exit 4).
+    Concurrent(String),
+    /// Unsupported repository format or extension (exit 5).
+    Unsupported(String),
+    /// Underlying IO failure (reported as exit 1).
     Io(std::io::Error),
+}
+
+impl CoreError {
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            CoreError::User(_) | CoreError::Io(_) => 1,
+            CoreError::RepoNotFound(_) => 2,
+            CoreError::Corruption(_) => 3,
+            CoreError::Concurrent(_) => 4,
+            CoreError::Unsupported(_) => 5,
+        }
+    }
 }
 
 impl fmt::Display for CoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CoreError::User(msg) => write!(f, "{msg}"),
-            CoreError::Corruption(msg) => write!(f, "corruption: {msg}"),
+            CoreError::User(msg)
+            | CoreError::RepoNotFound(msg)
+            | CoreError::Corruption(msg)
+            | CoreError::Concurrent(msg)
+            | CoreError::Unsupported(msg) => write!(f, "{msg}"),
             CoreError::Io(err) => write!(f, "io: {err}"),
         }
     }

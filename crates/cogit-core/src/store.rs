@@ -41,6 +41,40 @@ impl ObjectStore {
         Ok(self.path_for(oid)?.is_file())
     }
 
+    /// Expand a unique object-id prefix (>= 6 hex chars) to a full oid (COG-025).
+    pub fn expand_prefix(&self, name: &str) -> Result<String> {
+        let hexpart = name.strip_prefix("sha256:").unwrap_or(name);
+        let shape_ok = (6..=64).contains(&hexpart.len())
+            && hexpart.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+        if !shape_ok {
+            return Err(CoreError::User(format!(
+                "object store: '{name}' is not an object id or unique prefix (>= 6 hex chars)"
+            )));
+        }
+        if hexpart.len() == 64 {
+            return Ok(format!("sha256:{hexpart}"));
+        }
+        let fanout_dir = self.objects_dir.join(&hexpart[..2]);
+        let rest = &hexpart[2..];
+        let mut matches: Vec<String> = Vec::new();
+        if fanout_dir.is_dir() {
+            for entry in fs::read_dir(&fanout_dir)?.filter_map(|e| e.ok()) {
+                let file_name = entry.file_name().to_string_lossy().into_owned();
+                if file_name.starts_with(rest) {
+                    matches.push(file_name);
+                }
+            }
+            matches.sort();
+        }
+        match matches.len() {
+            0 => Err(CoreError::User(format!("object store: no object matches prefix '{name}'"))),
+            1 => Ok(format!("sha256:{}{}", &hexpart[..2], matches[0])),
+            n => Err(CoreError::User(format!(
+                "object store: prefix '{name}' is ambiguous ({n} matches)"
+            ))),
+        }
+    }
+
     /// Write an object; deduplicates by hash. Returns the object ID.
     pub fn write(&self, value: &Value) -> Result<String> {
         let (oid, preimage) = encode_object(value)?;

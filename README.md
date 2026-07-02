@@ -25,11 +25,12 @@ Concept with a working reference prototype.
 - `docs/` — PRD, ADRs, specs (object format, repository layout, CLI contract),
   invariants, test strategy, roadmap, threat model, recovery playbook.
 - `prototype/` — zero-dependency Python 3 reference implementation of the full
-  MVP CLI contract, with tests and frozen object-format test vectors.
-  The production implementation direction remains Rust
-  (`docs/adr/0007-rust-workspace-and-first-slice.md`); the prototype exists to
-  validate the specs and freeze cross-runtime object identity
+  CLI contract, with tests and frozen object-format test vectors
   (`docs/adr/0010-python-prototype-slice.md`).
+- `crates/` — the Rust implementation (`cogit-core` library + `cogit-cli`
+  binary, ADR-0007) with full command parity. Both runtimes reproduce the
+  frozen vectors byte-for-byte and can drive ONE repository
+  interchangeably — proven by `tools/interop-test.sh`.
 - `user_stories/` — agent-voice backlog (US-001..US-027).
 - `ideas/` — original concept notes.
 - `git/` — a reference copy of the upstream Git source tree used during
@@ -81,11 +82,19 @@ python3 -m cogit log -g                  # reflog: operational provenance
 python3 -m cogit verify
 ```
 
-Run the test suite:
+The Rust CLI is drop-in equivalent (same commands, same on-disk format):
 
 ```sh
-cd prototype
-python3 -m unittest discover -s tests -v
+cargo build
+./target/debug/cogit --repo /tmp/demo status
+```
+
+Run the test suites:
+
+```sh
+cd prototype && python3 -m unittest discover -s tests   # 108 tests
+cargo test                                              # core + golden vectors
+sh tools/interop-test.sh                                # Python <-> Rust on one repo
 ```
 
 ## Design guarantees

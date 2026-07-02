@@ -1,8 +1,11 @@
 # ADR-0007: Rust workspace and first implementation slice
 
 created_datetime: 2026-05-27T09:41:00+03:00
-updated_datetime: 2026-05-27T09:41:00+03:00
-status: Proposed
+updated_datetime: 2026-07-02T21:00:00+03:00
+status: Accepted — implemented as `crates/cogit-core` + `crates/cogit-cli`
+(COG-013): full command parity with the reference prototype, frozen vectors
+reproduced byte-for-byte, cross-runtime interop proven by
+`tools/interop-test.sh`.
 
 ## Context
 
