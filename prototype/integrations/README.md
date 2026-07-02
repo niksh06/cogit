@@ -19,7 +19,8 @@ claude mcp add cogit -e COGIT_REPO=$HOME/.cogit-journal/my-project \
 The journal is initialized on first use. Suggested agent workflow: start a
 session with `recap` from your last anchor; record decisions with
 `add_fact(commit=true)`; `anchor` milestones; when something turns out
-wrong, `blame_fact` it and `bisect_thought` the history.
+wrong, `blame_fact` it and `bisect_thought` the history. What deserves to
+be a fact — and what does not — is `docs/claim-modeling.md`.
 
 ## Claude Code hook (`claude_code_hook.py`) — passive journaling
 

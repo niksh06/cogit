@@ -50,6 +50,8 @@ Concept with a working reference prototype.
 | notes | annotation | post-hoc review overlay that never rewrites its target |
 
 "Fact" is product shorthand for an active assertion about a claim.
+How to model claims well — one proposition per claim, value objects,
+calibrated confidence — is `docs/claim-modeling.md`.
 
 Objects are zlib-compressed `<type> <size>\0<canonical-json>` preimages
 addressed by SHA-256 under `.cogit/objects/xx/...`. Everything is inspectable

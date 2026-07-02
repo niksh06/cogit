@@ -40,13 +40,13 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-031 | `cogit recap` belief-state digest for context recovery (model-review finding) | `issues/COG-031.md` | `test_cli.py::test_recap`; 108 tests green 2026-07-02 |
 | COG-013 | Rust port: `cogit-core` + `cogit-cli`, full command parity, golden vectors byte-for-byte | `issues/COG-013.md`, ADR-0007 | `cargo test` (12 tests, clippy clean); `tools/interop-test.sh`: Python↔Rust drive one repository interchangeably (ids, conflicts, rerere fingerprints, annotations, metrics all agree) |
 | COG-029 | MCP server: stdio JSON-RPC, 18 tools, destructive ops excluded per ADR-0009 | `issues/COG-029.md` | `test_mcp_server.py`: real subprocess handshake, tool listing, full workflow (micro-commit→anchor→blame→recap→verify), soft errors incl. secret rejection |
+| COG-032 | Claim-modeling cookbook: 7 rules, confidence bands, worked example | `issues/COG-032.md` | `docs/claim-modeling.md`; linked from README and integrations README |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-034 | Live MCP session findings (needs owner: register server, run a real session) | P0 (usage phase) | `issues/COG-034.md` |
-| COG-032 | Claim-modeling cookbook (model-review finding) | P1 | `issues/COG-032.md` |
 
 ## Open — later (P1/P2 stories, unscoped)
 
