@@ -288,6 +288,18 @@ Walks thought ancestry like `log` and prints each thought's annotations
 inline. Raw object view remains authoritative; annotations are display
 overlay only.
 
+### `cogit reflog-expire --keep <n> (--ref <name> | --all) [--dry-run]`
+
+Trims reflogs to their newest N entries (COG-024, closes OQ-010).
+
+Rules:
+
+- Never runs implicitly; expiry is an explicit operator action (ADR-0009).
+- `--keep` defaults from `[maintenance] reflogRetainEntries` when set;
+  with neither, the command fails.
+- `--dry-run` reports what would be dropped without changing anything.
+- Trimming shrinks the recovery window — see the recovery playbook.
+
 ### `cogit count-objects`
 
 Reports repository pressure metrics (COG-022, ADR-0006): loose objects by

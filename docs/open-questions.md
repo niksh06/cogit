@@ -40,9 +40,7 @@ Moved to Closed Questions as CQ-015 (implemented by COG-021, 2026-07-02).
 
 ### OQ-010: Reflog retention policy
 
-Question: How long should local operational history be retained?
-
-Status: Deferred
+Moved to Closed Questions as CQ-018 (COG-024, 2026-07-02).
 
 ### OQ-011: Maintenance thresholds
 
@@ -69,6 +67,22 @@ identifiers must pass). Still open: pluggable scanner-grade detection
 Status: Deferred (narrowed)
 
 ## Closed Questions
+
+### CQ-018: Reflog retention policy (was OQ-010)
+
+Answer: Retention is entry-count based and ALWAYS explicit in MVP:
+`cogit reflog-expire --keep <n> (--ref <name> | --all) [--dry-run]` trims
+each reflog to its newest N entries under the standard lockfile protocol.
+`--keep` may default from `[maintenance] reflogRetainEntries`, but no
+expiry ever runs implicitly — trimming the journal shrinks the recovery
+window (see recovery playbook), so it stays an operator action per
+ADR-0009. Time-based retention is future work if entry counts prove the
+wrong unit.
+
+Closed by:
+
+- `docs/spec/cli-contract.md`
+- `docs/recovery-playbook.md`
 
 ### CQ-017: Rerere conflict fingerprint (was OQ-008)
 

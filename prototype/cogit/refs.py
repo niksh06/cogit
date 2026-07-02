@@ -169,6 +169,34 @@ class RefStore:
                 f"reflog: {name} moved but journal append failed; operational history incomplete: {exc}"
             ) from exc
 
+    def list_reflogs(self):
+        """Yield reflog names (HEAD, refs/heads/x, ...) that exist on disk."""
+        logs_dir = os.path.join(self.cogit_dir, "logs")
+        if not os.path.isdir(logs_dir):
+            return
+        for dirpath, _dirs, files in os.walk(logs_dir):
+            for filename in sorted(files):
+                rel = os.path.relpath(os.path.join(dirpath, filename), logs_dir)
+                yield rel.replace(os.sep, "/")
+
+    def expire_reflog(self, name, keep: int, dry_run: bool = False):
+        """Trim a reflog to its newest `keep` entries (COG-024).
+
+        Destructive by design, so it only runs through the explicit
+        reflog-expire command; returns (kept, dropped).
+        """
+        if keep < 1:
+            raise UserError("reflog expire: --keep must be >= 1")
+        entries = self.read_reflog(name)  # also validates that lines parse
+        dropped = max(0, len(entries) - keep)
+        if dropped == 0 or dry_run:
+            return len(entries) - dropped, dropped
+        path = self._log_path(name)
+        with open(path, "r", encoding="utf-8") as handle:
+            lines = [line for line in handle if line.strip()]
+        self._locked_replace(path, "".join(lines[-keep:]))
+        return keep, dropped
+
     def read_reflog(self, name):
         """Return parsed reflog entries, oldest first."""
         path = self._log_path(name)

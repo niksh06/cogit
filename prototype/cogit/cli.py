@@ -435,6 +435,33 @@ def cmd_annotations(args):
     return 0
 
 
+def cmd_reflog_expire(args):
+    repo = _open_repo(args)
+    if bool(args.ref) == bool(args.all):
+        raise UserError("reflog-expire: pass exactly one of --ref <name> or --all")
+    keep = args.keep
+    if keep is None:
+        from .maintenance import _thresholds  # config-backed default
+
+        keep = _thresholds(repo.cogit_dir).get("reflogRetainEntries")
+        if keep is None:
+            raise UserError("reflog-expire: no --keep given and no [maintenance] reflogRetainEntries configured")
+    names = list(repo.refs.list_reflogs()) if args.all else [args.ref]
+    results = []
+    for name in names:
+        kept, dropped = repo.refs.expire_reflog(name, keep, dry_run=args.dry_run)
+        results.append({"ref": name, "kept": kept, "dropped": dropped})
+    if args.json:
+        print(json.dumps({"dry_run": args.dry_run, "results": results}, indent=2, sort_keys=True))
+        return 0
+    for row in results:
+        action = "would drop" if args.dry_run else "dropped"
+        print(f"{row['ref']}: {action} {row['dropped']}, kept {row['kept']}")
+    if args.dry_run:
+        print("dry run: nothing was changed")
+    return 0
+
+
 def cmd_count_objects(args):
     repo = _open_repo(args)
     from .maintenance import count_objects
@@ -651,6 +678,14 @@ def build_parser():
     p.add_argument("--namespace")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_annotations)
+
+    p = sub.add_parser("reflog-expire", help="trim reflogs to the newest N entries (explicit, destructive)")
+    p.add_argument("--keep", type=int, help="entries to keep (default: [maintenance] reflogRetainEntries)")
+    p.add_argument("--ref", help="one reflog name, e.g. HEAD or refs/heads/main")
+    p.add_argument("--all", action="store_true", help="expire every reflog")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_reflog_expire)
 
     p = sub.add_parser("count-objects", help="repository pressure metrics (never mutates)")
     p.add_argument("--json", action="store_true")

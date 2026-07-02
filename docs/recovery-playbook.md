@@ -190,3 +190,21 @@ Forbidden:
 - auto-resolve semantic conflicts without recording the resolution.
 - prune unreachable objects in MVP.
 - checkout across a dirty index.
+
+## Expired Reflog
+
+Symptoms:
+
+- `cogit log -g` shows fewer entries than expected.
+- A recovery target mentioned in old notes is no longer in the reflog.
+
+Prevention and recovery:
+
+1. `cogit reflog-expire` never runs implicitly; check who ran it and with
+   which `--keep` value.
+2. Use `--dry-run` before any real expiry.
+3. Expiry removes JOURNAL entries, not objects: a lost thought ID may
+   still be recoverable from anchors, branches, annotations, or an
+   operator's notes, and `cogit verify` will list dangling thoughts.
+4. Keep `[maintenance] reflogRetainEntries` comfortably larger than your
+   longest expected recovery window.

@@ -74,6 +74,32 @@ class RefStoreTests(unittest.TestCase):
         self.assertEqual(self.refs.read_head(), ("detached", A))
         self.assertEqual(len(self.refs.read_reflog("HEAD")), 1)
 
+    def test_reflog_expire(self):
+        for i in range(5):
+            expected_old = None if i == 0 else f"sha256:{chr(ord('a') + i - 1) * 64}"
+            self.refs.update_ref("refs/heads/main", f"sha256:{chr(ord('a') + i) * 64}",
+                                 expected_old, "agent", "commit", f"c{i}", TS)
+        # dry run reports but keeps everything
+        kept, dropped = self.refs.expire_reflog("refs/heads/main", 2, dry_run=True)
+        self.assertEqual((kept, dropped), (2, 3))
+        self.assertEqual(len(self.refs.read_reflog("refs/heads/main")), 5)
+        # real expiry keeps the newest entries and the file still parses
+        kept, dropped = self.refs.expire_reflog("refs/heads/main", 2)
+        self.assertEqual((kept, dropped), (2, 3))
+        entries = self.refs.read_reflog("refs/heads/main")
+        self.assertEqual([e["reason"] for e in entries], ["c3", "c4"])
+        # keep >= size is a no-op; keep < 1 is a user error
+        self.assertEqual(self.refs.expire_reflog("refs/heads/main", 10), (2, 0))
+        with self.assertRaises(UserError):
+            self.refs.expire_reflog("refs/heads/main", 0)
+
+    def test_list_reflogs(self):
+        self.refs.update_ref("refs/heads/main", A, None, "agent", "commit", "c", TS)
+        self.refs.append_reflog("HEAD", None, A, "agent", "commit", "c", TS)
+        names = list(self.refs.list_reflogs())
+        self.assertIn("HEAD", names)
+        self.assertIn("refs/heads/main", names)
+
     def test_head_lock_contention(self):
         lock = os.path.join(self.repo.cogit_dir, "HEAD.lock")
         with open(lock, "w"):

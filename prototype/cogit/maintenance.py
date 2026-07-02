@@ -15,6 +15,8 @@ DEFAULT_THRESHOLDS = {
     "looseObjectsWarn": 5000,   # ADR-0006 candidate trigger
     "refsWarn": 200,
     "reflogEntriesWarn": 10000,
+    # retention has NO default: reflog expiry is always explicit (COG-024)
+    "reflogRetainEntries": None,
 }
 
 
