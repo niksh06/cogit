@@ -1,6 +1,27 @@
 # Integrations
 
-## Claude Code hook (`claude_code_hook.py`)
+## MCP server (`mcp_server.py`) — active use
+
+Exposes Cogit to any MCP client (Claude Code, Claude Desktop) as tools:
+`add_fact`, `commit_thought`, `facts`, `recap`, `blame_fact`, `merge`,
+`resolve`, `anchor`, `annotate`, `bisect_thought`, `verify`, and more.
+Zero dependencies, stdio JSON-RPC, one server per journal. Destructive
+maintenance (prune, reflog-expire, rerere --forget) is not exposed
+(ADR-0009).
+
+Register with Claude Code:
+
+```sh
+claude mcp add cogit -e COGIT_REPO=$HOME/.cogit-journal/my-project \
+    -- python3 /ABS/PATH/prototype/integrations/mcp_server.py
+```
+
+The journal is initialized on first use. Suggested agent workflow: start a
+session with `recap` from your last anchor; record decisions with
+`add_fact(commit=true)`; `anchor` milestones; when something turns out
+wrong, `blame_fact` it and `bisect_thought` the history.
+
+## Claude Code hook (`claude_code_hook.py`) — passive journaling
 
 Records every tool call of a Claude Code session as a staged
 `tool_observation` fact and commits one thought per assistant turn — an
