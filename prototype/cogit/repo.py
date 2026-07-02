@@ -841,28 +841,55 @@ class Repository:
 
     # -- facts / show (COG-028) --------------------------------------------------------
 
+    def _fact_row(self, aid: str) -> dict:
+        assertion = self._read_typed(aid, "assertion")
+        claim = self._read_typed(assertion["claim"], "claim")
+        return {
+            "assertion": aid,
+            "claim": assertion["claim"],
+            "kind": claim["kind"],
+            "subject": claim["subject"],
+            "predicate": claim["predicate"],
+            "object": claim["object"],
+            "negates": claim.get("negates"),
+            "confidence_bps": assertion["confidence_bps"],
+            "source": assertion["source"]["type"],
+            "status": assertion["status"],
+        }
+
     def facts(self, ref: str = None):
         """Active facts of a thought, decoded enough to act on (pick IDs, judge beliefs)."""
         thought_oid = self.resolve(ref or "HEAD")
-        rows = []
-        for aid in sorted(self._mindset_assertions(thought_oid)):
-            assertion = self._read_typed(aid, "assertion")
-            claim = self._read_typed(assertion["claim"], "claim")
-            rows.append(
-                {
-                    "assertion": aid,
-                    "claim": assertion["claim"],
-                    "kind": claim["kind"],
-                    "subject": claim["subject"],
-                    "predicate": claim["predicate"],
-                    "object": claim["object"],
-                    "negates": claim.get("negates"),
-                    "confidence_bps": assertion["confidence_bps"],
-                    "source": assertion["source"]["type"],
-                    "status": assertion["status"],
-                }
-            )
+        rows = [self._fact_row(aid) for aid in sorted(self._mindset_assertions(thought_oid))]
         return {"thought": thought_oid, "facts": rows}
+
+    def recap(self, source: str, target: str = None):
+        """Belief-state digest between two points — context recovery (COG-031)."""
+        to_oid = self.resolve(target or "HEAD")
+        from_oid = self.resolve(source)
+        thoughts = []
+        if from_oid != to_oid:
+            ancestry_to = self._ancestry(to_oid)
+            if from_oid not in ancestry_to:
+                raise UserError(
+                    "recap: <from> is not an ancestor of <to>; for unrelated points use `cogit diff`"
+                )
+            ancestry_from = set(self._ancestry(from_oid))
+            between = {oid: t for oid, t in ancestry_to.items() if oid not in ancestry_from}
+            thoughts = [
+                {"id": oid, **{k: between[oid][k] for k in ("message", "author", "timestamp", "operation")}}
+                for oid in self._topo_oldest_first(between)
+            ]
+        from_set = self._mindset_assertions(from_oid)
+        to_set = self._mindset_assertions(to_oid)
+        return {
+            "from": from_oid,
+            "to": to_oid,
+            "thoughts": thoughts,
+            "added": [self._fact_row(aid) for aid in sorted(to_set - from_set)],
+            "removed": [self._fact_row(aid) for aid in sorted(from_set - to_set)],
+            "position": self.status(),
+        }
 
     def show(self, ref: str = None):
         """Thought header plus its active facts (git-show analogue)."""

@@ -119,18 +119,43 @@ def cmd_add_fact(args):
     repo = _open_repo(args)
     if args.fact is not None and args.kind is not None:
         raise UserError("add-fact: use either a JSON document or shorthand flags, not both")
-    if args.fact is not None:
+    if args.fact == "-":
+        doc = parse_json(sys.stdin.read())
+    elif args.fact is not None:
         doc = _load_json_arg(args.fact)
     elif args.kind is not None:
         doc = _build_shorthand_doc(args)
     else:
-        raise UserError("add-fact: provide a JSON document or shorthand flags (--kind ...)")
+        raise UserError("add-fact: provide a JSON document, '-' for stdin, or shorthand flags (--kind ...)")
+
+    if args.commit:
+        from .index_state import index_is_empty, load_index
+
+        if not index_is_empty(load_index(repo.cogit_dir)):
+            raise UserError(
+                "add-fact: --commit refuses with a non-empty index (staged facts, removals, "
+                "conflicts, or merge in progress) — a micro-commit must not swallow unrelated state"
+            )
+
     claim_oid, assertion_oid = repo.add_fact(doc)
+    thought_oid = None
+    if args.commit:
+        claim = repo.store.read(claim_oid)
+        assertion = repo.store.read(assertion_oid)
+        message = args.message or f"{claim['kind']}: {claim['subject']} {claim['predicate']}"
+        author = args.author or assertion["actor"]
+        thought_oid = repo.commit_thought(message, author, args.timestamp)
+
     if args.json:
-        print(json.dumps({"claim": claim_oid, "assertion": assertion_oid}, sort_keys=True))
+        payload = {"claim": claim_oid, "assertion": assertion_oid}
+        if thought_oid:
+            payload["thought"] = thought_oid
+        print(json.dumps(payload, sort_keys=True))
         return 0
     print(f"claim     {claim_oid}")
     print(f"staged    {assertion_oid}")
+    if thought_oid:
+        print(f"committed {thought_oid}")
     return 0
 
 
@@ -386,6 +411,29 @@ def cmd_facts(args):
     return 0
 
 
+def cmd_recap(args):
+    repo = _open_repo(args)
+    result = repo.recap(args.source, args.target)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+    position = result["position"]
+    where = f"branch {position['branch']}" if not position["detached"] else "detached HEAD"
+    print(f"recap {_short(result['from'])} -> {_short(result['to'])} ({len(result['thoughts'])} thought(s))")
+    for thought in result["thoughts"]:
+        print(f"  {_short(thought['id'])} {thought['timestamp']} {thought['operation']:7} {thought['message']}")
+    print(f"beliefs: +{len(result['added'])} -{len(result['removed'])}")
+    for row in result["added"]:
+        print(f"  + {row['kind']}  {row['subject']} {row['predicate']} "
+              f"{json.dumps(row['object'], ensure_ascii=False)}  conf={row['confidence_bps']}")
+    for row in result["removed"]:
+        print(f"  - {row['kind']}  {row['subject']} {row['predicate']} "
+              f"{json.dumps(row['object'], ensure_ascii=False)}")
+    merge_note = ", merge in progress" if position["merge_in_progress"] else ""
+    print(f"position: {where} at {_short(position['thought'])}{merge_note}")
+    return 0
+
+
 def cmd_show(args):
     repo = _open_repo(args)
     result = repo.show(args.ref)
@@ -587,6 +635,10 @@ def build_parser():
     p.add_argument("--actor", default="agent", help="shorthand: asserting actor")
     p.add_argument("--method", default="cli", help="shorthand: method type")
     p.add_argument("--asserted-at", dest="asserted_at", help="shorthand: ISO-8601 UTC override (default: now)")
+    p.add_argument("--commit", action="store_true", help="commit a thought immediately (micro-commit)")
+    p.add_argument("--message", "-m", help="thought message for --commit (default: derived from claim)")
+    p.add_argument("--author", help="thought author for --commit (default: assertion actor)")
+    p.add_argument("--timestamp", help="thought timestamp for --commit (tests)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_add_fact)
 
@@ -703,6 +755,12 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_facts)
+
+    p = sub.add_parser("recap", help="belief-state digest between two points (context recovery)")
+    p.add_argument("source", help="anchor, ref, or thought to recap from")
+    p.add_argument("target", nargs="?", help="default: HEAD")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_recap)
 
     p = sub.add_parser("show", help="thought header plus its active facts")
     p.add_argument("ref", nargs="?")

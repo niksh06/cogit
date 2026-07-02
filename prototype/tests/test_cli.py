@@ -215,6 +215,65 @@ class AcceptanceScenarioTests(CliHarness):
         self.run_cli("log", "--introduced-fact", a1, "--removed-fact", a1, expect=1)
         self.run_cli("log", "-g", "--introduced-fact", a1, expect=1)
 
+    def test_add_fact_commit_micro_flow(self):
+        # one invocation: claim + assertion + mindset + thought (COG-030)
+        result = json.loads(self.run_cli(
+            "add-fact",
+            "--kind", "agent_decision", "--subject", "demo", "--predicate", "micro",
+            "--object", "yes", "--source", "agent:s", "--confidence", "9000",
+            "--actor", "fable", "--asserted-at", ts(0),
+            "--commit", "--timestamp", ts(1), "--json",
+        ))
+        self.assertIn("thought", result)
+        thought = json.loads(self.run_cli("cat-object", result["thought"]))
+        self.assertEqual(thought["message"], "agent_decision: demo micro")
+        self.assertEqual(thought["author"], "fable")  # defaults from assertion actor
+        status = json.loads(self.run_cli("status", "--json"))
+        self.assertEqual(status["staged"], [])  # index clean after micro-commit
+        # micro-commit refuses to swallow unrelated staged state
+        self.add_fact("staged-elsewhere")
+        self.run_cli(
+            "add-fact", "--kind", "agent_decision", "--subject", "demo",
+            "--predicate", "second", "--object", "y", "--source", "agent:s",
+            "--confidence", "9000", "--commit", expect=1,
+        )
+
+    def test_add_fact_stdin(self):
+        import io as _io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        from cogit.cli import main
+
+        doc = fact_doc("via-stdin", when=ts(0))
+        arg_out = self.run_cli("add-fact", json.dumps(doc))
+        out = _io.StringIO()
+        with patch("sys.stdin", _io.StringIO(json.dumps(doc))), redirect_stdout(out):
+            code = main(["--repo", self.tmp.name, "add-fact", "-"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), arg_out)  # byte-identical IDs (idempotent)
+
+    def test_recap(self):
+        a1 = self.add_fact("keep")
+        t1 = self.commit("baseline", n=1)
+        self.run_cli("anchor", "task-understood", t1, "--timestamp", ts(2))
+        self.add_fact("gained")
+        self.commit("progress", n=3)
+        self.run_cli("remove-fact", a1, "--reason", "superseded")
+        self.commit("cleanup", n=4)
+        result = json.loads(self.run_cli("recap", "task-understood", "--json"))
+        self.assertEqual(result["from"], t1)
+        self.assertEqual(len(result["thoughts"]), 2)
+        self.assertEqual([t["message"] for t in result["thoughts"]], ["progress", "cleanup"])
+        self.assertEqual([r["predicate"] for r in result["added"]], ["gained"])
+        self.assertEqual([r["predicate"] for r in result["removed"]], ["keep"])
+        text = self.run_cli("recap", "task-understood")
+        self.assertIn("beliefs: +1 -1", text)
+        self.assertIn("position: branch main", text)
+        # unrelated <from> is a user error with a hint
+        self.run_cli("branch", "island", t1, "--timestamp", ts(5))
+        self.run_cli("recap", "HEAD", t1, expect=1)
+
     def test_annotate_and_log_annotations(self):
         a1 = self.add_fact("annotated")
         t1 = self.commit("subject thought", n=1)

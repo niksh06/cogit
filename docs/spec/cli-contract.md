@@ -93,9 +93,14 @@ Rules:
 
 - Shorthand and equivalent JSON must produce identical object IDs;
   `--asserted-at` defaults to now (UTC).
+- `-` as the positional argument reads the JSON document from stdin
+  (COG-030).
 - The `assertion.claim` reference is filled from the written claim
   automatically; if present, it must match.
-- Does not create a thought.
+- Without `--commit`, does not create a thought; `--commit` stages and
+  immediately commits a thought (micro-commit, COG-030) with a message
+  derived from the claim unless `--message` is given, and refuses when the
+  index already holds unrelated staged state or a merge is in progress.
 - Is idempotent for the same assertion ID.
 - Shows claim and staged assertion IDs on success.
 
@@ -332,6 +337,21 @@ Rules:
 - When skip verdicts leave more than one possible first-bad thought, the
   remaining candidate range is reported and the command exits `1`
   (inconclusive), mirroring git-bisect's "could be any of" behavior.
+
+### `cogit recap <from> [<to>]`
+
+Belief-state digest for context recovery (COG-031): the thoughts between
+two points plus the net fact changes with decoded claim content, and the
+current position.
+
+Rules:
+
+- `<from>` accepts anchors, refs, and thought IDs; `<to>` defaults to
+  `HEAD`.
+- `<from>` must be an ancestor of `<to>`; otherwise the command fails and
+  points to `diff`.
+- Output is compact by design — the primary consumer is an agent resuming
+  work.
 
 ### `cogit facts [<ref-or-thought>]`
 
