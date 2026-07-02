@@ -602,6 +602,15 @@ class Repository:
         # keep whole conflicted families out of the auto-merged result
         result = {aid for aid in result if groups[aid] not in conflicted_groups}
 
+        # rerere: attach stored suggestions; never auto-apply (US-019)
+        from .rerere import conflict_fingerprint, suggestion_for
+
+        for conflict in conflicts:
+            conflict["fingerprint"] = conflict_fingerprint(conflict)
+            stored = suggestion_for(self.cogit_dir, conflict)
+            if stored is not None:
+                conflict["suggestion"] = {"keep": stored["keep"]}
+
         ours_mindset = self._read_typed(ours, "thought")["mindset"]
         index = dict(EMPTY_INDEX)
         index["base_mindset"] = ours_mindset
@@ -630,13 +639,19 @@ class Repository:
             "base": base,
         }
 
-    def resolve_conflict(self, claim_oid: str, keep: str = None, drop: bool = False):
-        if (keep is None) == (not drop):
-            raise UserError("resolve: exactly one of --keep <assertion-id> or --drop is required")
+    def resolve_conflict(self, claim_oid: str, keep: str = None, drop: bool = False,
+                         use_suggestion: bool = False):
+        if sum([keep is not None, drop, use_suggestion]) != 1:
+            raise UserError("resolve: exactly one of --keep <assertion-id>, --drop, or --suggested is required")
         index = load_index(self.cogit_dir)
         entry = next((c for c in index["conflicts"] if c["claim"] == claim_oid), None)
         if entry is None:
             raise UserError(f"resolve: no recorded conflict for claim {claim_oid}")
+        if use_suggestion:
+            stored = entry.get("suggestion")
+            if stored is None:
+                raise UserError("resolve: no stored suggestion for this conflict; use --keep or --drop")
+            keep = stored["keep"]  # None means the remembered resolution was a drop
         candidates = set(entry["ours"]) | set(entry["theirs"]) | set(entry["base"])
         kept = set()
         if keep is not None:
@@ -665,6 +680,10 @@ class Repository:
         index["removed_facts"].sort(key=lambda removed: removed["id"])
         index["conflicts"] = [c for c in index["conflicts"] if c["claim"] != claim_oid]
         save_index(self.cogit_dir, index)
+        # remember this arbitration for repeated conflicts (rerere)
+        from .rerere import record_resolution
+
+        record_resolution(self.cogit_dir, entry, keep, now_utc())
         return len(index["conflicts"])
 
     # -- blame ---------------------------------------------------------------------

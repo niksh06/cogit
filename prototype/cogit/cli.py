@@ -205,7 +205,8 @@ def cmd_status(args):
         print(f"  - {entry['id']} ({entry['reason']})")
     print(f"conflicts:      {len(status['conflicts'])}")
     for conflict in status["conflicts"]:
-        print(f"  ! claim {conflict['claim']}")
+        hint = "  (remembered resolution available: --suggested)" if "suggestion" in conflict else ""
+        print(f"  ! claim {conflict['claim']}{hint}")
     if status["merge_in_progress"]:
         print("merge in progress")
     return 0
@@ -293,6 +294,10 @@ def cmd_merge(args):
             print(f"CONFLICT claim {conflict['claim']}")
             print(f"  ours:   {conflict['ours']}")
             print(f"  theirs: {conflict['theirs']}")
+            if "suggestion" in conflict:
+                remembered = conflict["suggestion"]["keep"] or "drop"
+                print(f"  remembered resolution: {remembered}")
+                print(f"  apply with: cogit resolve {_short(conflict['claim'])} --suggested")
         print("resolve conflicts, then run `cogit commit-thought`")
         return 1
     print("run `cogit commit-thought` to record the merge thought")
@@ -303,11 +308,41 @@ def cmd_resolve(args):
     repo = _open_repo(args)
     claim = repo.expand_object_id(args.claim_id)
     keep = repo.expand_object_id(args.keep) if args.keep else None
-    remaining = repo.resolve_conflict(claim, keep=keep, drop=args.drop)
+    remaining = repo.resolve_conflict(claim, keep=keep, drop=args.drop, use_suggestion=args.suggested)
     if args.json:
         print(json.dumps({"remaining_conflicts": remaining}, sort_keys=True))
         return 0
     print(f"resolved; {remaining} conflict(s) remaining")
+    return 0
+
+
+def cmd_rerere(args):
+    repo = _open_repo(args)
+    from .rerere import forget, load_rerere
+
+    if args.forget:
+        key = args.forget
+        removed = forget(repo.cogit_dir, key)
+        if removed == 0 and not key.startswith("sha256:"):
+            try:
+                removed = forget(repo.cogit_dir, repo.expand_object_id(key))
+            except UserError:
+                pass
+        if args.json:
+            print(json.dumps({"forgotten": removed}, sort_keys=True))
+            return 0
+        print(f"forgot {removed} stored resolution(s)")
+        return 0
+    store = load_rerere(repo.cogit_dir)
+    if args.json:
+        print(json.dumps(store, indent=2, sort_keys=True))
+        return 0
+    if not store:
+        print("(no stored resolutions)")
+        return 0
+    for fingerprint, record in sorted(store.items()):
+        outcome = record["keep"] or "drop"
+        print(f"{_short(fingerprint)}  claim {_short(record['claim'])}  -> {outcome}  ({record['recorded_at']})")
     return 0
 
 
@@ -587,8 +622,14 @@ def build_parser():
     p.add_argument("claim_id")
     p.add_argument("--keep", help="assertion id to keep")
     p.add_argument("--drop", action="store_true", help="keep none of the candidates")
+    p.add_argument("--suggested", action="store_true", help="apply the remembered resolution (rerere)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_resolve)
+
+    p = sub.add_parser("rerere", help="list or forget remembered conflict resolutions")
+    p.add_argument("--forget", metavar="CLAIM_OR_FINGERPRINT", help="forget stored resolutions")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_rerere)
 
     p = sub.add_parser("blame-fact", help="first thought that introduced a fact")
     p.add_argument("fact_id")

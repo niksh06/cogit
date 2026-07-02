@@ -225,16 +225,34 @@ Rules:
 - Does not commit automatically unless a future option explicitly says so;
   the merge thought is created by `commit-thought`.
 
-### `cogit resolve <claim-id> (--keep <assertion-id> | --drop)`
+### `cogit resolve <claim-id> (--keep <assertion-id> | --drop | --suggested)`
 
 Resolves a recorded merge conflict for one claim.
 
 Rules:
 
-- `--keep` stages the chosen assertion; `--drop` stages none of them.
+- `--keep` stages the chosen assertion; `--drop` stages none of them;
+  `--suggested` applies the remembered resolution attached by merge
+  (COG-020) and fails if none is stored.
+- Every successful resolution is recorded into `rerere.json` for future
+  suggestions.
 - Removes the conflict entry from the index.
 - Editing `index.json` by hand remains a legal fallback; the file is the
   authority.
+
+### `cogit rerere [--forget <claim-or-fingerprint>]`
+
+Lists remembered conflict resolutions, or forgets them (COG-020).
+
+Rules:
+
+- Fingerprints are orientation-invariant: the same rivalry conflicts to
+  one fingerprint regardless of merge direction; a different base is a
+  different conflict.
+- Merge only SURFACES suggestions (in its output, `status`, and the index
+  entry); applying one always requires an explicit `resolve --suggested`.
+- `--forget` accepts a full fingerprint or a claim ID (abbreviations
+  allowed for claims) and removes matching entries.
 
 ### `cogit blame-fact <fact-id> [<ref-or-id>]`
 

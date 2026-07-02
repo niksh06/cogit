@@ -86,12 +86,21 @@ Field semantics:
   removals always carry an explicit reason.
 - `conflicts`: entries
   `{"claim": "sha256:<claim-id>", "ours": [...], "theirs": [...], "base": [...]}`
-  produced by merge; unresolved conflicts block commit.
+  produced by merge; unresolved conflicts block commit. Merge may add
+  `"fingerprint"` and, when a remembered resolution exists, `"suggestion"`
+  (COG-020); suggestions are informational and never auto-applied.
 - `merge`: `null`, or `{"ours": "...", "theirs": "...", "base": "..."}`
   thought IDs while a merge is in progress. A commit performed in this state
   becomes a merge thought with `parents[0]=ours`, `parents[1]=theirs`.
 
 The index is mutable. It must not be treated as committed history.
+
+### `rerere.json` (optional)
+
+Local conflict-resolution memory (COG-020): a map of normalized conflict
+fingerprints to remembered outcomes. Analogous to git's `rr-cache`:
+mutable, per-repository preference data — not history, never part of
+provenance. Written via tmp+rename; absence means no stored resolutions.
 
 ### `refs/`
 

@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T16:30:00+03:00
+updated_datetime: 2026-07-02T17:00:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -33,6 +33,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-021 | `bisect-thought` with oracle contract (closed OQ-009 as CQ-015) | `issues/COG-021.md` | commit `f9ec330`; `test_bisect.py` incl. skip range + real-oracle CLI run |
 | COG-022 | `count-objects` pressure metrics with `[maintenance]` thresholds | `issues/COG-022.md` | `test_maintenance.py`; 86 tests green 2026-07-02; `gc --auto` deferred until compaction exists |
 | COG-018 | Annotations: `annotation` object type, typed namespaces, annotate/annotations, `log --annotations` (ADR-0012; closed OQ-007 as CQ-016) | `issues/COG-018.md` | annotation tests in `test_repo.py`/`test_cli.py`; vectors +1 additive (5 frozen intact); 91 tests green 2026-07-02 |
+| COG-020 | Rerere: orientation-invariant conflict fingerprints, remembered resolutions, `resolve --suggested`, `cogit rerere` (closed OQ-008 as CQ-017) | `issues/COG-020.md` | `test_rerere.py` (record/suggest/apply/forget, drop memory); 97 tests green 2026-07-02; roadmap Phase 4 DONE |
 
 ## Open — next
 
@@ -44,7 +45,6 @@ Story references point to `user_stories/agent-user-stories.md`.
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-020 | Conflict resolution memory (rerere-like) | P1 | US-019, OQ-008 |
 | COG-023 | Secret detection v2 beyond pattern heuristics | P2 | OQ-013 |
 | COG-024 | Reflog retention policy | P2 | OQ-010 |
 | COG-026 | Trust layer: signatures, quarantine, imports | P2 | US-023, US-024, OQ-012 |

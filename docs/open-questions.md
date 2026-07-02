@@ -32,9 +32,7 @@ Moved to Closed Questions as CQ-016 (typed namespaces, ADR-0012, 2026-07-02).
 
 ### OQ-008: Rerere conflict fingerprint
 
-Question: What normalized shape identifies repeated semantic conflicts?
-
-Status: Deferred
+Moved to Closed Questions as CQ-017 (COG-020, 2026-07-02).
 
 ### OQ-009: Bisect oracle contract
 
@@ -67,6 +65,21 @@ Decision so far: secrets are forbidden; suspected secret writes are rejected. De
 Status: Deferred
 
 ## Closed Questions
+
+### CQ-017: Rerere conflict fingerprint (was OQ-008)
+
+Answer: SHA-256 over the canonical JSON of the normalized conflict shape
+`{claim, sides, base}`, where `claim` is the negation-group root, both
+side lists are sorted internally and against each other (merge orientation
+does not matter), and `base` is included so the same rivalry over a
+different base is a different conflict. Resolutions are recorded on every
+`resolve` into local `rerere.json`; merge surfaces suggestions but never
+applies them without an explicit `resolve --suggested`.
+
+Closed by:
+
+- `issues/COG-020.md`
+- `docs/spec/cli-contract.md`
 
 ### CQ-016: Notes namespaces (was OQ-007)
 
