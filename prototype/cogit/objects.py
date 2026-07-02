@@ -9,7 +9,7 @@ import re
 from .canonical import canonical_json_bytes
 from .errors import UserError
 
-OBJECT_TYPES = ("claim", "assertion", "mindset", "thought", "anchor")
+OBJECT_TYPES = ("claim", "assertion", "mindset", "thought", "anchor", "annotation")
 
 CLAIM_KINDS = (
     "user_preference",
@@ -168,12 +168,35 @@ def _validate_anchor(obj):
     _check_str(_require(obj, "author"), "author")
 
 
+def _validate_annotation(obj):
+    _check_keys(
+        obj,
+        ("type", "target", "namespace", "body", "author", "created_at", "parents"),
+        where="annotation",
+    )
+    _check_oid(_require(obj, "target"), "target")
+    namespace = _check_str(_require(obj, "namespace"), "namespace")
+    if not REF_SEGMENT_RE.match(namespace):
+        raise UserError("annotation: namespace must be a valid ref segment")
+    _check_str(_require(obj, "body"), "body")
+    _check_str(_require(obj, "author"), "author")
+    _check_timestamp(_require(obj, "created_at"), "created_at")
+    parents = _require(obj, "parents")
+    if not isinstance(parents, list):
+        raise UserError("annotation: parents must be a list")
+    for parent in parents:
+        _check_oid(parent, "parents")
+    if len(set(parents)) != len(parents):
+        raise UserError("annotation: parents must not contain duplicates")
+
+
 _VALIDATORS = {
     "claim": _validate_claim,
     "assertion": _validate_assertion,
     "mindset": _validate_mindset,
     "thought": _validate_thought,
     "anchor": _validate_anchor,
+    "annotation": _validate_annotation,
 }
 
 

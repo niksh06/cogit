@@ -46,6 +46,7 @@ Concept with a working reference prototype.
 | tag | anchor | named milestone pointing to a thought |
 | branch | hypothesis | movable ref to the tip of a reasoning line |
 | reflog | operational provenance | append-only journal of pointer movement |
+| notes | annotation | post-hoc review overlay that never rewrites its target |
 
 "Fact" is product shorthand for an active assertion about a claim.
 

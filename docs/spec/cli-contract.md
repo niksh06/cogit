@@ -246,6 +246,30 @@ Rules:
 - No semantic text matching.
 - Linear traversal is acceptable in MVP.
 
+### `cogit annotate <target-id> --message <text> [--namespace <ns>]`
+
+Appends an annotation to a thought, assertion, or claim without rewriting
+it (COG-018, ADR-0012).
+
+Rules:
+
+- Target must exist; its bytes are untouched.
+- Default namespace is `notes`; a namespace is one valid ref segment.
+- The annotation chains onto `refs/notes/<ns>` with an old-target check
+  and a reflog entry.
+- Suspected secrets in the body are rejected.
+
+### `cogit annotations <target-id> [--namespace <ns>]`
+
+Lists annotations for a target, newest first, across all namespaces by
+default.
+
+### `cogit log --annotations [<ref-or-id>]`
+
+Walks thought ancestry like `log` and prints each thought's annotations
+inline. Raw object view remains authoritative; annotations are display
+overlay only.
+
 ### `cogit count-objects`
 
 Reports repository pressure metrics (COG-022, ADR-0006): loose objects by

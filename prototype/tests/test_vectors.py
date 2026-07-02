@@ -18,10 +18,10 @@ class VectorTests(unittest.TestCase):
         with open(VECTORS_PATH, "r", encoding="utf-8") as handle:
             cls.vectors = json.load(handle)["vectors"]
 
-    def test_all_five_types_present(self):
+    def test_all_types_present(self):
         self.assertEqual(
             [v["type"] for v in self.vectors],
-            ["claim", "assertion", "mindset", "thought", "anchor"],
+            ["claim", "assertion", "mindset", "thought", "anchor", "annotation"],
         )
 
     def test_vectors_reproduce(self):
@@ -40,6 +40,7 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(by_type["mindset"]["object"]["assertions"], [by_type["assertion"]["object_id"]])
         self.assertEqual(by_type["thought"]["object"]["mindset"], by_type["mindset"]["object_id"])
         self.assertEqual(by_type["anchor"]["object"]["target"], by_type["thought"]["object_id"])
+        self.assertEqual(by_type["annotation"]["object"]["target"], by_type["thought"]["object_id"])
 
 
 if __name__ == "__main__":

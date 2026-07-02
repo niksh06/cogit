@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T15:30:00+03:00
+updated_datetime: 2026-07-02T16:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -32,6 +32,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-019 | `log --introduced-fact` / `--removed-fact` event queries | `issues/COG-019.md` | commit `ad1b522`; re-introduction test in `test_cli.py` |
 | COG-021 | `bisect-thought` with oracle contract (closed OQ-009 as CQ-015) | `issues/COG-021.md` | commit `f9ec330`; `test_bisect.py` incl. skip range + real-oracle CLI run |
 | COG-022 | `count-objects` pressure metrics with `[maintenance]` thresholds | `issues/COG-022.md` | `test_maintenance.py`; 86 tests green 2026-07-02; `gc --auto` deferred until compaction exists |
+| COG-018 | Annotations: `annotation` object type, typed namespaces, annotate/annotations, `log --annotations` (ADR-0012; closed OQ-007 as CQ-016) | `issues/COG-018.md` | annotation tests in `test_repo.py`/`test_cli.py`; vectors +1 additive (5 frozen intact); 91 tests green 2026-07-02 |
 
 ## Open — next
 
@@ -43,7 +44,6 @@ Story references point to `user_stories/agent-user-stories.md`.
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-018 | Notes-like annotations without rewriting objects | P1 | US-017 |
 | COG-020 | Conflict resolution memory (rerere-like) | P1 | US-019, OQ-008 |
 | COG-023 | Secret detection v2 beyond pattern heuristics | P2 | OQ-013 |
 | COG-024 | Reflog retention policy | P2 | OQ-010 |

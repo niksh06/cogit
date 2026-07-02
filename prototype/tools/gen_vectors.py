@@ -60,7 +60,17 @@ def build_chain():
         "created_at": TS,
         "author": "agent",
     }
-    return [claim, assertion, mindset, thought, anchor]
+
+    annotation = {
+        "type": "annotation",
+        "target": thought_id,
+        "namespace": "notes",
+        "body": "Reviewed: canonical example annotation.",
+        "author": "reviewer",
+        "created_at": TS,
+        "parents": [],
+    }
+    return [claim, assertion, mindset, thought, anchor, annotation]
 
 
 def main():

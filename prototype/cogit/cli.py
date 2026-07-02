@@ -240,8 +240,11 @@ def cmd_log(args):
             )
         return 0
     thoughts = repo.log(args.ref)
+    annotations = repo.annotations_index() if args.annotations else {}
     if args.json:
-        print(json.dumps(thoughts, indent=2, sort_keys=True))
+        if args.annotations:
+            thoughts = [{**t, "annotations": annotations.get(t["id"], [])} for t in thoughts]
+        print(json.dumps(thoughts, indent=2, sort_keys=True, ensure_ascii=False))
         return 0
     for thought in thoughts:
         print(f"thought {thought['id']}")
@@ -251,6 +254,8 @@ def cmd_log(args):
         print(f"date:     {thought['timestamp']}")
         print(f"op:       {thought['operation']}")
         print(f"\n    {thought['message']}\n")
+        for entry in annotations.get(thought["id"], []):
+            _print_annotation(entry, indent="    ")
     return 0
 
 
@@ -360,6 +365,38 @@ def cmd_show(args):
     print(f"op:       {result['operation']}")
     print(f"\n    {result['message']}\n")
     _print_fact_rows(result["facts"])
+    return 0
+
+
+def cmd_annotate(args):
+    repo = _open_repo(args)
+    annotation_oid = repo.annotate(
+        args.target, args.message, namespace=args.namespace,
+        author=args.author, timestamp=args.timestamp,
+    )
+    if args.json:
+        print(json.dumps({"annotation": annotation_oid, "namespace": args.namespace}, sort_keys=True))
+        return 0
+    print(f"annotated {annotation_oid} ({args.namespace})")
+    return 0
+
+
+def _print_annotation(entry, indent=""):
+    print(f"{indent}[{entry['namespace']}] {_short(entry['id'])} {entry['author']} {entry['created_at']}")
+    print(f"{indent}  {entry['body']}")
+
+
+def cmd_annotations(args):
+    repo = _open_repo(args)
+    entries = repo.annotations_for(args.target, namespace=args.namespace)
+    if args.json:
+        print(json.dumps(entries, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+    if not entries:
+        print("(no annotations)")
+        return 0
+    for entry in entries:
+        _print_annotation(entry)
     return 0
 
 
@@ -528,6 +565,7 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--introduced-fact", metavar="FACT_ID", help="thoughts that introduced this fact")
     p.add_argument("--removed-fact", metavar="FACT_ID", help="thoughts that removed this fact")
+    p.add_argument("--annotations", action="store_true", help="display annotations inline")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_log)
 
@@ -557,6 +595,21 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_blame_fact)
+
+    p = sub.add_parser("annotate", help="append an annotation to a thought/assertion/claim")
+    p.add_argument("target")
+    p.add_argument("--message", "-m", required=True)
+    p.add_argument("--namespace", default="notes")
+    p.add_argument("--author", default="agent")
+    p.add_argument("--timestamp")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_annotate)
+
+    p = sub.add_parser("annotations", help="list annotations for a target (newest first)")
+    p.add_argument("target", nargs="?")
+    p.add_argument("--namespace")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_annotations)
 
     p = sub.add_parser("count-objects", help="repository pressure metrics (never mutates)")
     p.add_argument("--json", action="store_true")

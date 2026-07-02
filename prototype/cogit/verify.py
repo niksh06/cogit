@@ -72,6 +72,16 @@ def verify_repository(repo):
             check_link(oid, obj["negates"], "claim", "missing-negated-claim")
         elif obj["type"] == "anchor":
             check_link(oid, obj["target"], "thought", "missing-anchor-target")
+        elif obj["type"] == "annotation":
+            target = obj["target"]
+            if target not in objects:
+                _finding(findings, "error", "missing-annotation-target",
+                         f"{oid} annotates missing object {target}")
+            elif objects[target]["type"] not in ("thought", "assertion", "claim"):
+                _finding(findings, "error", "bad-annotation-target",
+                         f"{oid} annotates a {objects[target]['type']}")
+            for parent in obj["parents"]:
+                check_link(oid, parent, "annotation", "missing-annotation-parent")
 
     # -- contradictory mindsets (invariants 24-25; warning, not corruption) --------
     for oid, obj in sorted(objects.items()):
@@ -100,6 +110,25 @@ def verify_repository(repo):
                 reachable_tips.append(value)
     except CogitError as exc:
         _finding(findings, "error", "bad-head", str(exc))
+
+    # notes refs: target type + chain namespace consistency (ADR-0012)
+    try:
+        for refname, target in repo.refs.list_refs("refs/notes"):
+            namespace = refname.rsplit("/", 1)[-1]
+            if not check_link(refname, target, "annotation", "bad-ref-target"):
+                continue
+            tip = target
+            seen = set()
+            while tip is not None and tip not in seen and tip in objects:
+                seen.add(tip)
+                annotation = objects[tip]
+                if annotation["namespace"] != namespace:
+                    _finding(findings, "error", "namespace-mismatch",
+                             f"{tip} carries namespace '{annotation['namespace']}' but is reachable from {refname}")
+                parents = annotation["parents"]
+                tip = parents[0] if parents else None
+    except CogitError as exc:
+        _finding(findings, "error", "bad-ref", str(exc))
 
     for prefix, expected in (("refs/heads", "thought"), ("refs/anchors", "anchor")):
         try:

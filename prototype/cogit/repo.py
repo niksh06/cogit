@@ -61,8 +61,10 @@ def init_repository(path: str) -> str:
         "logs",
         os.path.join("logs", "refs", "heads"),
         os.path.join("logs", "refs", "anchors"),
+        os.path.join("logs", "refs", "notes"),
         os.path.join("refs", "heads"),
         os.path.join("refs", "anchors"),
+        os.path.join("refs", "notes"),
         os.path.join("refs", "remotes"),
     ):
         os.makedirs(os.path.join(cogit_dir, sub), exist_ok=True)
@@ -744,6 +746,79 @@ class Repository:
                 {"name": refname[len("refs/anchors/") :], "anchor": target, "target": anchor["target"]}
             )
         return anchors
+
+    # -- annotations (COG-018, ADR-0012) -----------------------------------------------
+
+    ANNOTATABLE_TYPES = ("thought", "assertion", "claim")
+
+    def annotate(self, target: str, body: str, namespace: str = "notes",
+                 author: str = "agent", timestamp: str = None) -> str:
+        """Append an annotation to a target object without rewriting it."""
+        if not body or not body.strip():
+            raise UserError("annotate: --message is required")
+        reject_suspected_secrets(body, "annotate")
+        target_oid = self.expand_object_id(target) if not target.startswith("refs/") else self.resolve(target)
+        target_obj = self.store.read(target_oid)
+        if target_obj["type"] not in self.ANNOTATABLE_TYPES:
+            raise UserError(
+                f"annotate: {target_oid} is a {target_obj['type']}; "
+                f"annotatable types are {self.ANNOTATABLE_TYPES}"
+            )
+        refname = f"refs/notes/{namespace}"
+        validate_ref_name(refname)
+        if "/" in namespace:
+            raise UserError("annotate: namespace must be a single ref segment")
+        timestamp = timestamp or now_utc()
+        tip = self.refs.read_ref(refname)
+        annotation_oid = self.store.write(
+            {
+                "type": "annotation",
+                "target": target_oid,
+                "namespace": namespace,
+                "body": body,
+                "author": author,
+                "created_at": timestamp,
+                "parents": [tip] if tip else [],
+            }
+        )
+        self.refs.update_ref(
+            refname, annotation_oid, tip, author, "annotate", f"{namespace}: {target_oid}", timestamp
+        )
+        return annotation_oid
+
+    def _annotation_chain(self, refname: str):
+        """Yield annotation objects from newest to oldest for one notes ref."""
+        tip = self.refs.read_ref(refname)
+        seen = set()
+        while tip is not None and tip not in seen:
+            seen.add(tip)
+            annotation = self._read_typed(tip, "annotation")
+            yield tip, annotation
+            parents = annotation["parents"]
+            tip = parents[0] if parents else None
+
+    def annotations_for(self, target: str = None, namespace: str = None):
+        """Annotations newest-first, optionally filtered by target and namespace."""
+        target_oid = self.expand_object_id(target) if target else None
+        refnames = (
+            [f"refs/notes/{namespace}"]
+            if namespace
+            else [refname for refname, _t in self.refs.list_refs("refs/notes")]
+        )
+        results = []
+        for refname in refnames:
+            for oid, annotation in self._annotation_chain(refname):
+                if target_oid is None or annotation["target"] == target_oid:
+                    results.append({"id": oid, **annotation})
+        results.sort(key=lambda a: (a["created_at"], a["id"]), reverse=True)
+        return results
+
+    def annotations_index(self):
+        """Map target oid -> annotations (newest first) across all namespaces."""
+        index = {}
+        for entry in self.annotations_for():
+            index.setdefault(entry["target"], []).append(entry)
+        return index
 
     # -- facts / show (COG-028) --------------------------------------------------------
 

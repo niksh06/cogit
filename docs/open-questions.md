@@ -28,9 +28,7 @@ Moved to Closed Questions as CQ-014 (Apache-2.0, decided 2026-07-02).
 
 ### OQ-007: Notes namespaces
 
-Question: Should annotations live under one notes ref or typed namespaces such as `refs/notes/audit` and `refs/notes/eval`?
-
-Status: Deferred
+Moved to Closed Questions as CQ-016 (typed namespaces, ADR-0012, 2026-07-02).
 
 ### OQ-008: Rerere conflict fingerprint
 
@@ -69,6 +67,18 @@ Decision so far: secrets are forbidden; suspected secret writes are rejected. De
 Status: Deferred
 
 ## Closed Questions
+
+### CQ-016: Notes namespaces (was OQ-007)
+
+Answer: Typed namespaces. Each namespace is one append-only annotation
+chain under `refs/notes/<namespace>` (default `notes`); the namespace is
+recorded inside every annotation object so chain entries cannot be
+silently re-homed. One-ref-for-everything was rejected because audit and
+eval overlays have different consumers and retention expectations.
+
+Closed by:
+
+- `docs/adr/0012-annotations.md`
 
 ### CQ-015: Bisect oracle contract (was OQ-009)
 

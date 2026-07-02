@@ -365,6 +365,53 @@ class RepositoryWorkflowTests(unittest.TestCase):
         with self.assertRaises(UserError):
             self.repo.anchor("plan-approved", t1)  # anchors are fixed in MVP
 
+    # -- annotations (COG-018) ---------------------------------------------------------
+
+    def test_annotate_never_rewrites_target_and_chains(self):
+        a1, t1 = self.commit_fact("reviewed", "first")
+        target_path = self.repo.store.path_for(t1)
+        with open(target_path, "rb") as handle:
+            before = handle.read()
+        n1 = self.repo.annotate(t1, "looks correct", author="reviewer", timestamp=ts(1))
+        n2 = self.repo.annotate(t1, "confirmed by test", author="reviewer", timestamp=ts(2))
+        with open(target_path, "rb") as handle:
+            self.assertEqual(handle.read(), before)  # target byte-identical
+        entries = self.repo.annotations_for(t1)
+        self.assertEqual([e["id"] for e in entries], [n2, n1])  # newest first
+        self.assertEqual(entries[0]["parents"], [n1])  # chain intact
+        self.assertEqual(entries[1]["parents"], [])
+        # every notes move is reflogged
+        reflog = self.repo.refs.read_reflog("refs/notes/notes")
+        self.assertEqual(len(reflog), 2)
+        self.assertEqual(reflog[0]["op"], "annotate")
+        self.assertEqual(verify_repository(self.repo), [])
+
+    def test_annotation_namespaces_are_separate(self):
+        a1, t1 = self.commit_fact("target", "first")
+        self.repo.annotate(t1, "audit ok", namespace="audit", timestamp=ts(1))
+        self.repo.annotate(a1, "eval: 0.9", namespace="eval", timestamp=ts(2))
+        self.assertEqual(len(self.repo.annotations_for(t1)), 1)
+        self.assertEqual(len(self.repo.annotations_for(namespace="eval")), 1)
+        self.assertEqual(len(self.repo.annotations_for()), 2)
+        self.assertEqual(self.repo.annotations_for(a1)[0]["namespace"], "eval")
+
+    def test_annotate_rejects_bad_targets_and_secrets(self):
+        a1, t1 = self.commit_fact("x", "first")
+        anchor_oid = self.repo.anchor("m", t1, timestamp=ts(1))
+        with self.assertRaises(UserError):
+            self.repo.annotate(anchor_oid, "not annotatable")
+        with self.assertRaises(UserError):
+            self.repo.annotate(t1, "leak AKIA" + "ABCDEFGHIJKLMNOP here")
+        with self.assertRaises(UserError):
+            self.repo.annotate(t1, "   ")
+
+    def test_verify_catches_broken_annotation_links(self):
+        a1, t1 = self.commit_fact("fragile", "first")
+        self.repo.annotate(a1, "about to break", timestamp=ts(1))
+        os.unlink(self.repo.store.path_for(a1))  # annotated assertion vanishes
+        findings = verify_repository(self.repo)
+        self.assertTrue(any(f["code"] == "missing-annotation-target" for f in findings))
+
     # -- verify ---------------------------------------------------------------------
 
     def test_verify_healthy_and_dangling_warning(self):

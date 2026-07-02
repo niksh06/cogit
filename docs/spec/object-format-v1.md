@@ -18,7 +18,8 @@ Object IDs are SHA-256 hashes of the uncompressed object preimage:
 
 Where:
 
-- `<type>` is one of `claim`, `assertion`, `mindset`, `thought`, `anchor`.
+- `<type>` is one of `claim`, `assertion`, `mindset`, `thought`, `anchor`,
+  `annotation` (the last added by ADR-0012).
 - `<size>` is the byte length of `<canonical-json>` encoded as UTF-8.
 - `\0` is a single NUL byte.
 - `<canonical-json>` is UTF-8 JSON following the canonicalization rules below.
@@ -189,6 +190,32 @@ Rules:
 - `name` must be a valid ref segment.
 - `target` references a `thought` object.
 - Anchor objects do not rewrite target thoughts.
+
+### Annotation
+
+Required fields (ADR-0012):
+
+```json
+{
+  "type": "annotation",
+  "target": "sha256:...",
+  "namespace": "audit",
+  "body": "Root cause confirmed by regression test.",
+  "author": "reviewer",
+  "created_at": "2026-07-02T16:00:00Z",
+  "parents": []
+}
+```
+
+Rules:
+
+- `target` references a `thought`, `assertion`, or `claim` object.
+- `namespace` is a single valid ref segment.
+- `body` and `author` are non-empty strings.
+- `parents` is a list of unique annotation IDs in chain order (the previous
+  namespace tip, or empty for the first annotation); exempt from
+  set-sorting because order is meaningful.
+- Annotations never rewrite their targets.
 
 ## Read Rules
 

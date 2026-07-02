@@ -20,6 +20,12 @@ An important named milestone pointing to a thought. Examples: `task-understood`,
 
 An anchor is not a mutable memory entry. It is a provenance marker.
 
+### Annotation
+
+An append-only post-hoc overlay on a thought, assertion, or claim: review
+verdicts, eval results, policy flags. Annotations chain per typed namespace
+under `refs/notes/<namespace>` and never rewrite their targets (ADR-0012).
+
 ### Assertion
 
 An immutable provenance-bearing statement about a claim. It records the claim ID, status, source, confidence, assertion time, actor, and method.
@@ -68,7 +74,7 @@ An immutable snapshot of active assertion object IDs plus metadata. A mindset is
 
 ### Object
 
-An immutable content-addressed record stored under `.cogit/objects/xx/...`. MVP object types are `claim`, `assertion`, `mindset`, `thought`, and `anchor`.
+An immutable content-addressed record stored under `.cogit/objects/xx/...`. MVP object types are `claim`, `assertion`, `mindset`, `thought`, `anchor`, and `annotation` (ADR-0012).
 
 ### Operational Provenance
 

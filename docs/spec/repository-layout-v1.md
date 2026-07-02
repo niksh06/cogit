@@ -103,6 +103,8 @@ Rules:
 - `refs/anchors/<name>` points to an anchor object ID; the anchor object
   carries the target thought plus audit metadata (decided per CQ-005).
   Traversal commands dereference the anchor to its target thought.
+- `refs/notes/<namespace>` points to the newest annotation object of an
+  append-only annotation chain (ADR-0012).
 - `refs/remotes/` is reserved for future sync.
 
 ### `logs/`
@@ -195,6 +197,8 @@ Rules:
 - thought parent links exist;
 - thought mindsets exist;
 - mindset facts exist;
+- annotation targets and chain parents exist; annotation namespaces match
+  the notes ref that reaches them;
 - reflog lines parse.
 
 ## Non-Goals

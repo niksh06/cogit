@@ -23,7 +23,10 @@ class CountObjectsTests(unittest.TestCase):
         self.build_fixture()
         result = count_objects(self.repo)
         # 2 claims, 2 assertions, 2 mindsets, 2 thoughts, 1 anchor
-        self.assertEqual(result["by_type"], {"claim": 2, "assertion": 2, "mindset": 2, "thought": 2, "anchor": 1})
+        self.assertEqual(
+            result["by_type"],
+            {"claim": 2, "assertion": 2, "mindset": 2, "thought": 2, "anchor": 1, "annotation": 0},
+        )
         self.assertEqual(result["loose_objects"], 9)
         self.assertEqual(result["corrupt_objects"], 0)
         self.assertGreater(result["disk_bytes"], 0)

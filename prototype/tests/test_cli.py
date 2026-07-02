@@ -215,6 +215,27 @@ class AcceptanceScenarioTests(CliHarness):
         self.run_cli("log", "--introduced-fact", a1, "--removed-fact", a1, expect=1)
         self.run_cli("log", "-g", "--introduced-fact", a1, expect=1)
 
+    def test_annotate_and_log_annotations(self):
+        a1 = self.add_fact("annotated")
+        t1 = self.commit("subject thought", n=1)
+        note = json.loads(self.run_cli(
+            "annotate", t1, "-m", "review: solid reasoning",
+            "--namespace", "audit", "--author", "reviewer",
+            "--timestamp", ts(2), "--json",
+        ))
+        self.assertEqual(note["namespace"], "audit")
+        listing = json.loads(self.run_cli("annotations", t1, "--json"))
+        self.assertEqual(len(listing), 1)
+        self.assertEqual(listing[0]["body"], "review: solid reasoning")
+        # abbreviated target works, annotations display inline in log
+        self.run_cli("annotate", t1[len("sha256:") :][:12], "-m", "second look", "--timestamp", ts(3))
+        text = self.run_cli("log", "--annotations")
+        self.assertIn("review: solid reasoning", text)
+        self.assertIn("second look", text)
+        with_json = json.loads(self.run_cli("log", "--annotations", "--json"))
+        self.assertEqual(len(with_json[0]["annotations"]), 2)
+        self.run_cli("verify")
+
     def test_abbreviated_object_ids(self):
         a1 = self.add_fact("prefixed")
         t1 = self.commit("prefix test")
