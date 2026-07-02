@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T13:30:00+03:00
+updated_datetime: 2026-07-02T14:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -25,16 +25,16 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-014 | Atomic symbolic-HEAD updates (old-content check on HEAD writes) | `issues/COG-014.md` | `test_refs.py` HEAD race/lock tests (exit 4), spec updated |
 | COG-015 | Negation-aware merge and commit checks (invariants 24–25) | `issues/COG-015.md` | `test_repo.py` negation tests; verify warns `contradictory-mindset` |
 | COG-012 | Integration experiment: Claude Code hook + CLI dogfood session | `issues/COG-012.md` | hook smoke-tested (incl. secret rejection); findings report 2026-07-02; spawned COG-027/028, re-prioritized COG-025 |
+| COG-016 | License: Apache-2.0 adopted, OQ-004 closed as CQ-014 | `issues/COG-016.md` | commit `6b8f58d`; owner decision 2026-07-02 |
+| COG-027 | Shorthand fact input for `add-fact` (incl. `--negates`) | `issues/COG-027.md` | commit `2ebe3ee`; parity test: shorthand == JSON object IDs |
+| COG-028 | `cogit facts` / `cogit show` porcelain | `issues/COG-028.md` | commit `3e3acac`; `test_cli.py::test_facts_and_show` |
+| COG-025 | Abbreviated object-id prefixes + `--json` on all porcelain commands | CLI contract | commit `c2fb017`; 77 tests green 2026-07-02 |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-013 | Rust `cogit-core` port reproducing frozen vectors | P1 | `issues/COG-013.md`, ADR-0007 |
-| COG-016 | License and open-source posture (OQ-004) — needs owner decision | P1 | `issues/COG-016.md` |
-| COG-027 | Shorthand fact input for `add-fact` | P1 | `issues/COG-027.md` |
-| COG-028 | `cogit facts` / `cogit show` porcelain | P1 | `issues/COG-028.md` |
-| COG-025 | Abbreviated object-id resolution and `--json` on all commands | P1 (was P2; COG-012 findings) | CLI contract |
+| COG-013 | Rust `cogit-core` port reproducing frozen vectors (deferred by owner until the model settles) | P1 | `issues/COG-013.md`, ADR-0007 |
 
 ## Open — later (P1/P2 stories, unscoped)
 
