@@ -7,6 +7,7 @@ schema. Contract: docs/spec/object-format-v1.md.
 
 import hashlib
 import os
+import re
 import zlib
 
 from .canonical import canonical_json, parse_json
@@ -27,6 +28,28 @@ class ObjectStore:
 
     def exists(self, oid: str) -> bool:
         return os.path.isfile(self.path_for(oid))
+
+    PREFIX_RE = re.compile(r"^[0-9a-f]{6,64}$")
+
+    def expand_prefix(self, name: str) -> str:
+        """Expand a unique object-id prefix (>= 6 hex chars) to a full oid (COG-025)."""
+        hexpart = name[len("sha256:") :] if name.startswith("sha256:") else name
+        if not self.PREFIX_RE.match(hexpart):
+            raise UserError(
+                f"object store: '{name}' is not an object id or unique prefix (>= 6 hex chars)"
+            )
+        if len(hexpart) == 64:
+            return "sha256:" + hexpart
+        fanout_dir = os.path.join(self.objects_dir, hexpart[:2])
+        rest = hexpart[2:]
+        matches = []
+        if os.path.isdir(fanout_dir):
+            matches = [entry for entry in sorted(os.listdir(fanout_dir)) if entry.startswith(rest)]
+        if not matches:
+            raise UserError(f"object store: no object matches prefix '{name}'")
+        if len(matches) > 1:
+            raise UserError(f"object store: prefix '{name}' is ambiguous ({len(matches)} matches)")
+        return f"sha256:{hexpart[:2]}{matches[0]}"
 
     def write(self, obj) -> str:
         """Write an object; deduplicates by hash. Returns the object ID."""

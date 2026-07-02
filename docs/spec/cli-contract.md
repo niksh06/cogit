@@ -13,7 +13,11 @@ This document defines the MVP command-line behavior for Cogit. The CLI is a porc
 - Commands operate on the nearest `.cogit/` repository unless `--repo <path>` is provided.
 - Commands must not require a daemon.
 - Human output is concise by default.
-- Machine-readable output may be added with `--json`.
+- Every porcelain command accepts `--json` for machine-readable output
+  (COG-025); `init` and `cat-object` (already JSON) are exempt.
+- Object IDs may be abbreviated to a unique prefix of at least 6 hex
+  characters (with or without the `sha256:` prefix); ambiguous or unknown
+  prefixes are user errors. Ref names take precedence over prefixes.
 - Commands that mutate refs append reflog entries.
 - Commands that fail must leave refs and index in a consistent state.
 

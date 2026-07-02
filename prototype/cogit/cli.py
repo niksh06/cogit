@@ -58,13 +58,13 @@ def cmd_hash_object(args):
         from .objects import encode_object
 
         oid, _preimage = encode_object(obj)
-    print(oid)
+    print(json.dumps({"object_id": oid}) if args.json else oid)
     return 0
 
 
 def cmd_cat_object(args):
     repo = _open_repo(args)
-    obj = repo.store.read(args.object_id if args.object_id.startswith("sha256:") else "sha256:" + args.object_id)
+    obj = repo.store.read(repo.expand_object_id(args.object_id))
     print(json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False))
     return 0
 
@@ -126,6 +126,9 @@ def cmd_add_fact(args):
     else:
         raise UserError("add-fact: provide a JSON document or shorthand flags (--kind ...)")
     claim_oid, assertion_oid = repo.add_fact(doc)
+    if args.json:
+        print(json.dumps({"claim": claim_oid, "assertion": assertion_oid}, sort_keys=True))
+        return 0
     print(f"claim     {claim_oid}")
     print(f"staged    {assertion_oid}")
     return 0
@@ -133,8 +136,11 @@ def cmd_add_fact(args):
 
 def cmd_remove_fact(args):
     repo = _open_repo(args)
-    oid = args.assertion_id if args.assertion_id.startswith("sha256:") else "sha256:" + args.assertion_id
+    oid = repo.expand_object_id(args.assertion_id)
     outcome = repo.remove_fact(oid, args.reason)
+    if args.json:
+        print(json.dumps({"outcome": outcome, "assertion": oid}, sort_keys=True))
+        return 0
     print(f"{outcome}  {oid}")
     return 0
 
@@ -142,6 +148,9 @@ def cmd_remove_fact(args):
 def cmd_commit_thought(args):
     repo = _open_repo(args)
     thought_oid = repo.commit_thought(args.message, args.author, args.timestamp)
+    if args.json:
+        print(json.dumps({"thought": thought_oid}, sort_keys=True))
+        return 0
     print(f"committed {thought_oid}")
     return 0
 
@@ -149,11 +158,18 @@ def cmd_commit_thought(args):
 def cmd_branch(args):
     repo = _open_repo(args)
     if args.name is None:
-        for branch in repo.list_branches():
+        branches = repo.list_branches()
+        if args.json:
+            print(json.dumps(branches, indent=2, sort_keys=True))
+            return 0
+        for branch in branches:
             marker = "*" if branch["current"] else " "
             print(f"{marker} {branch['name']} {_short(branch['target'])}")
         return 0
     target = repo.branch(args.name, args.thought, actor=args.actor, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps({"branch": args.name, "target": target}, sort_keys=True))
+        return 0
     print(f"branch {args.name} -> {_short(target)}")
     return 0
 
@@ -161,6 +177,9 @@ def cmd_branch(args):
 def cmd_checkout(args):
     repo = _open_repo(args)
     mode, thought = repo.checkout(args.target, actor=args.actor, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps({"mode": mode, "thought": thought}, sort_keys=True))
+        return 0
     if mode == "branch":
         print(f"switched to branch {args.target} at {_short(thought)}")
     else:
@@ -239,6 +258,9 @@ def cmd_diff(args):
 def cmd_merge(args):
     repo = _open_repo(args)
     result = repo.merge(args.target, actor=args.actor, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 1 if result.get("conflicts") else 0
     if result["result"] == "already-up-to-date":
         print("already up to date")
         return 0
@@ -259,18 +281,19 @@ def cmd_merge(args):
 
 def cmd_resolve(args):
     repo = _open_repo(args)
-    claim = args.claim_id if args.claim_id.startswith("sha256:") else "sha256:" + args.claim_id
-    keep = None
-    if args.keep:
-        keep = args.keep if args.keep.startswith("sha256:") else "sha256:" + args.keep
+    claim = repo.expand_object_id(args.claim_id)
+    keep = repo.expand_object_id(args.keep) if args.keep else None
     remaining = repo.resolve_conflict(claim, keep=keep, drop=args.drop)
+    if args.json:
+        print(json.dumps({"remaining_conflicts": remaining}, sort_keys=True))
+        return 0
     print(f"resolved; {remaining} conflict(s) remaining")
     return 0
 
 
 def cmd_blame_fact(args):
     repo = _open_repo(args)
-    oid = args.fact_id if args.fact_id.startswith("sha256:") else "sha256:" + args.fact_id
+    oid = repo.expand_object_id(args.fact_id)
     result = repo.blame_fact(oid, args.ref)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -344,12 +367,19 @@ def cmd_verify(args):
 def cmd_anchor(args):
     repo = _open_repo(args)
     if args.name is None:
-        for anchor in repo.list_anchors():
+        anchors = repo.list_anchors()
+        if args.json:
+            print(json.dumps(anchors, indent=2, sort_keys=True))
+            return 0
+        for anchor in anchors:
             print(f"{anchor['name']} -> {_short(anchor['target'])} (anchor {_short(anchor['anchor'])})")
         return 0
     if args.thought_id is None:
         raise UserError("anchor: usage `cogit anchor <name> <thought-id>`")
     anchor_oid = repo.anchor(args.name, args.thought_id, author=args.author, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps({"name": args.name, "anchor": anchor_oid}, sort_keys=True))
+        return 0
     print(f"anchor {args.name} {anchor_oid}")
     return 0
 
@@ -373,6 +403,7 @@ def build_parser():
     p.add_argument("--type", required=True, choices=["claim", "assertion", "mindset", "thought", "anchor"])
     p.add_argument("--write", action="store_true")
     p.add_argument("file", help="JSON file or inline JSON")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_hash_object)
 
     p = sub.add_parser("cat-object", help="print a decoded, verified object")
@@ -393,17 +424,20 @@ def build_parser():
     p.add_argument("--actor", default="agent", help="shorthand: asserting actor")
     p.add_argument("--method", default="cli", help="shorthand: method type")
     p.add_argument("--asserted-at", dest="asserted_at", help="shorthand: ISO-8601 UTC override (default: now)")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_add_fact)
 
     p = sub.add_parser("remove-fact", help="stage removal of an active assertion")
     p.add_argument("assertion_id")
     p.add_argument("--reason", required=True)
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_remove_fact)
 
     p = sub.add_parser("commit-thought", help="commit staged facts as a thought")
     p.add_argument("--message", "-m", required=True)
     p.add_argument("--author", required=True)
     p.add_argument("--timestamp", help="ISO-8601 UTC override (tests)")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_commit_thought)
 
     p = sub.add_parser("branch", help="create a branch (or list branches)")
@@ -411,12 +445,14 @@ def build_parser():
     p.add_argument("thought", nargs="?")
     p.add_argument("--actor", default="agent")
     p.add_argument("--timestamp")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_branch)
 
     p = sub.add_parser("checkout", help="switch HEAD to a branch or detach at a thought")
     p.add_argument("target")
     p.add_argument("--actor", default="agent")
     p.add_argument("--timestamp")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_checkout)
 
     p = sub.add_parser("status", help="show current position and staged state")
@@ -440,12 +476,14 @@ def build_parser():
     p.add_argument("target")
     p.add_argument("--actor", default="agent")
     p.add_argument("--timestamp")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_merge)
 
     p = sub.add_parser("resolve", help="resolve a recorded merge conflict for a claim")
     p.add_argument("claim_id")
     p.add_argument("--keep", help="assertion id to keep")
     p.add_argument("--drop", action="store_true", help="keep none of the candidates")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_resolve)
 
     p = sub.add_parser("blame-fact", help="first thought that introduced a fact")
@@ -473,6 +511,7 @@ def build_parser():
     p.add_argument("thought_id", nargs="?")
     p.add_argument("--author", default="agent")
     p.add_argument("--timestamp")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_anchor)
 
     return parser

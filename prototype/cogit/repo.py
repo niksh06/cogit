@@ -153,7 +153,17 @@ class Repository:
                 anchor = self._read_typed(target, "anchor")
                 return anchor["target"]
             return target
+        # refs take precedence; a hex-looking name falls through to prefix expansion
+        stripped = name[len("sha256:") :] if name.startswith("sha256:") else name
+        if ObjectStore.PREFIX_RE.match(stripped):
+            return self.store.expand_prefix(name)
         raise UserError(f"resolve: unknown ref or object '{name}'")
+
+    def expand_object_id(self, name: str) -> str:
+        """Full oid, bare 64-hex, or unique prefix -> full oid (no ref lookup)."""
+        if is_oid(name):
+            return name
+        return self.store.expand_prefix(name)
 
     def _read_typed(self, oid: str, expected: str) -> dict:
         obj = self.store.read(oid)
@@ -479,16 +489,14 @@ class Repository:
     # -- diff ----------------------------------------------------------------------
 
     def _assertions_of(self, name: str) -> set:
-        """Accept a thought/mindset oid or ref-ish name; return its assertion set."""
-        if is_oid(name) or HEX64_RE.match(name or ""):
-            oid = name if is_oid(name) else "sha256:" + name
-            obj = self.store.read(oid)
-            if obj["type"] == "mindset":
-                return set(obj["assertions"])
-            if obj["type"] == "thought":
-                return set(self._read_typed(obj["mindset"], "mindset")["assertions"])
-            raise UserError(f"diff: {oid} is a {obj['type']}, expected thought or mindset")
-        return self._mindset_assertions(self.resolve(name))
+        """Accept a thought/mindset oid, unique prefix, or ref-ish name."""
+        oid = self.resolve(name)  # refs first; hex names fall through to prefix expansion
+        obj = self.store.read(oid)
+        if obj["type"] == "mindset":
+            return set(obj["assertions"])
+        if obj["type"] == "thought":
+            return set(self._read_typed(obj["mindset"], "mindset")["assertions"])
+        raise UserError(f"diff: {oid} is a {obj['type']}, expected thought or mindset")
 
     def diff(self, a: str, b: str):
         set_a = self._assertions_of(a)

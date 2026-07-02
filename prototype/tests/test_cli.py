@@ -195,6 +195,42 @@ class AcceptanceScenarioTests(CliHarness):
         # both json and shorthand -> user error
         self.run_cli("add-fact", json.dumps(doc), "--kind", "agent_decision", expect=1)
 
+    def test_abbreviated_object_ids(self):
+        a1 = self.add_fact("prefixed")
+        t1 = self.commit("prefix test")
+        short_a1 = a1[len("sha256:") : len("sha256:") + 12]
+        decoded = json.loads(self.run_cli("cat-object", short_a1))
+        self.assertEqual(decoded["type"], "assertion")
+        blame = json.loads(self.run_cli("blame-fact", short_a1, "--json"))
+        self.assertEqual(blame["thought"], t1)
+        diff = json.loads(self.run_cli("diff", t1[len("sha256:") :][:12], t1, "--json"))
+        self.assertEqual(diff["added"], [])
+        # unknown and too-short prefixes are user errors
+        self.run_cli("cat-object", "0123456789ab", expect=1)
+        self.run_cli("cat-object", "abc", expect=1)
+
+    def test_json_on_mutating_commands(self):
+        added = json.loads(self.run_cli(
+            "add-fact", json.dumps(fact_doc("json-mode", when=ts(0))), "--json"
+        ))
+        self.assertIn("assertion", added)
+        committed = json.loads(self.run_cli(
+            "commit-thought", "--message", "m", "--author", "a", "--timestamp", ts(1), "--json"
+        ))
+        self.assertTrue(committed["thought"].startswith("sha256:"))
+        branch = json.loads(self.run_cli("branch", "side", "--timestamp", ts(2), "--json"))
+        self.assertEqual(branch["target"], committed["thought"])
+        checkout = json.loads(self.run_cli("checkout", "side", "--timestamp", ts(3), "--json"))
+        self.assertEqual(checkout, {"mode": "branch", "thought": committed["thought"]})
+        merged = json.loads(self.run_cli("merge", "main", "--timestamp", ts(4), "--json"))
+        self.assertEqual(merged["result"], "already-up-to-date")
+        anchor = json.loads(self.run_cli(
+            "anchor", "js", committed["thought"], "--timestamp", ts(5), "--json"
+        ))
+        self.assertEqual(anchor["name"], "js")
+        listing = json.loads(self.run_cli("branch", "--json"))
+        self.assertEqual(sorted(b["name"] for b in listing), ["main", "side"])
+
     def test_hash_object_without_write_does_not_mutate(self):
         doc = fact_doc("pure")["claim"]
         oid = self.run_cli("hash-object", "--type", "claim", json.dumps(doc)).strip()
