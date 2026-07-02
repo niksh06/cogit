@@ -1,0 +1,14 @@
+# Upstream Git source tree kept as design reference only (GPLv2, not part of the product)
+/git/
+
+# Python
+__pycache__/
+*.pyc
+/.venv/
+*.egg-info/
+
+# OS noise
+.DS_Store
+
+# Local agent/editor settings (not part of the product)
+.claude/settings.local.json

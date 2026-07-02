@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cogit"
+version = "0.1.0"
+description = "Cogit reference prototype: version control for agent cognition and reasoning provenance"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+cogit = "cogit.cli:main"
+
+[tool.setuptools]
+packages = ["cogit"]

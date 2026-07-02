@@ -1,0 +1,83 @@
+{
+  "format": "object-format-v1",
+  "vectors": [
+    {
+      "type": "claim",
+      "object": {
+        "type": "claim",
+        "kind": "user_preference",
+        "subject": "user",
+        "predicate": "prefers_response_style",
+        "object": "brief",
+        "qualifiers": {
+          "scope": "assistant_reply"
+        }
+      },
+      "canonical_json": "{\"kind\":\"user_preference\",\"object\":\"brief\",\"predicate\":\"prefers_response_style\",\"qualifiers\":{\"scope\":\"assistant_reply\"},\"subject\":\"user\",\"type\":\"claim\"}",
+      "preimage": "claim 153\u0000{\"kind\":\"user_preference\",\"object\":\"brief\",\"predicate\":\"prefers_response_style\",\"qualifiers\":{\"scope\":\"assistant_reply\"},\"subject\":\"user\",\"type\":\"claim\"}",
+      "object_id": "sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61"
+    },
+    {
+      "type": "assertion",
+      "object": {
+        "type": "assertion",
+        "claim": "sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61",
+        "status": "asserted",
+        "source": {
+          "type": "prompt",
+          "uri": "conversation:current"
+        },
+        "confidence_bps": 9200,
+        "asserted_at": "2026-07-02T10:00:00Z",
+        "actor": "agent",
+        "method": {
+          "type": "user_statement"
+        }
+      },
+      "canonical_json": "{\"actor\":\"agent\",\"asserted_at\":\"2026-07-02T10:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":9200,\"method\":{\"type\":\"user_statement\"},\"source\":{\"type\":\"prompt\",\"uri\":\"conversation:current\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
+      "preimage": "assertion 288\u0000{\"actor\":\"agent\",\"asserted_at\":\"2026-07-02T10:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":9200,\"method\":{\"type\":\"user_statement\"},\"source\":{\"type\":\"prompt\",\"uri\":\"conversation:current\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
+      "object_id": "sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf"
+    },
+    {
+      "type": "mindset",
+      "object": {
+        "type": "mindset",
+        "assertions": [
+          "sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf"
+        ],
+        "created_at": "2026-07-02T10:00:00Z"
+      },
+      "canonical_json": "{\"assertions\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"created_at\":\"2026-07-02T10:00:00Z\",\"type\":\"mindset\"}",
+      "preimage": "mindset 143\u0000{\"assertions\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"created_at\":\"2026-07-02T10:00:00Z\",\"type\":\"mindset\"}",
+      "object_id": "sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8"
+    },
+    {
+      "type": "thought",
+      "object": {
+        "type": "thought",
+        "parents": [],
+        "mindset": "sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8",
+        "operation": "commit",
+        "message": "Captured user's output preference.",
+        "author": "agent",
+        "timestamp": "2026-07-02T10:00:00Z"
+      },
+      "canonical_json": "{\"author\":\"agent\",\"message\":\"Captured user's output preference.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[],\"timestamp\":\"2026-07-02T10:00:00Z\",\"type\":\"thought\"}",
+      "preimage": "thought 235\u0000{\"author\":\"agent\",\"message\":\"Captured user's output preference.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[],\"timestamp\":\"2026-07-02T10:00:00Z\",\"type\":\"thought\"}",
+      "object_id": "sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316"
+    },
+    {
+      "type": "anchor",
+      "object": {
+        "type": "anchor",
+        "name": "plan-approved",
+        "target": "sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316",
+        "created_at": "2026-07-02T10:00:00Z",
+        "author": "agent"
+      },
+      "canonical_json": "{\"author\":\"agent\",\"created_at\":\"2026-07-02T10:00:00Z\",\"name\":\"plan-approved\",\"target\":\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\",\"type\":\"anchor\"}",
+      "preimage": "anchor 176\u0000{\"author\":\"agent\",\"created_at\":\"2026-07-02T10:00:00Z\",\"name\":\"plan-approved\",\"target\":\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\",\"type\":\"anchor\"}",
+      "object_id": "sha256:5849df56a8fa77192c4ae6f04acaa71e61c14e5f539154c91d79eceec212b1c7"
+    }
+  ]
+}
