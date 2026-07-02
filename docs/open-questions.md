@@ -22,11 +22,7 @@ Status: Open (narrowed)
 
 ### OQ-004: License and open-source posture
 
-Question: Which license and contribution model should Cogit use?
-
-Why it matters: open-source adoption depends on license clarity before publication.
-
-Status: Open
+Moved to Closed Questions as CQ-014 (Apache-2.0, decided 2026-07-02).
 
 ## Post-MVP Questions
 
@@ -75,6 +71,19 @@ Decision so far: secrets are forbidden; suspected secret writes are rejected. De
 Status: Deferred
 
 ## Closed Questions
+
+### CQ-014: License (was OQ-004)
+
+Answer: Apache-2.0 — permissive with a patent grant, the standard choice
+for infrastructure tooling; safe for a future hosted/enterprise layer.
+Contribution model: ticket-first (BACKLOG.md), invariants are the review
+bar, object-format changes require an ADR plus regenerated vectors.
+
+Closed by:
+
+- `LICENSE`
+- `README.md` (License and contributions)
+- owner decision, 2026-07-02
 
 ### CQ-010: Canonicalization profile (was OQ-001)
 

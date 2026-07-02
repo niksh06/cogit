@@ -100,3 +100,14 @@ python3 -m unittest discover -s tests -v
 - Secrets must not be stored; suspected secret writes are rejected, not
   redacted (`docs/adr/0009-agent-autonomy-and-destructive-operations.md`).
 - Full invariant list: `docs/invariants.md`.
+
+## License and contributions
+
+Licensed under the [Apache License 2.0](LICENSE). Contributions are welcome
+once the repository is published: open an issue referencing a `BACKLOG.md`
+ticket (or propose a new one), keep changes within the invariants in
+`docs/invariants.md`, and include tests — the object format may only change
+through an ADR plus regenerated test vectors.
+
+The `git/` reference tree is upstream Git source (GPLv2), kept locally for
+design study only; it is untracked and is not part of the licensed product.
