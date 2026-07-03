@@ -1,10 +1,41 @@
-"""Staged working memory: .cogit/index.json (docs/spec/repository-layout-v1.md)."""
+"""Staged working memory: .cogit/index.json (docs/spec/repository-layout-v1.md).
+
+Concurrency contract (COG-035): every read-modify-write of the index runs
+under `index.json.lock`. Lock ordering: the index lock may be held while
+taking ref locks, never the reverse.
+"""
 
 import json
 import os
+import time
+from contextlib import contextmanager
 
-from .errors import CorruptionError
+from .errors import ConcurrentUpdateError, CorruptionError
 from .objects import is_oid
+
+
+@contextmanager
+def index_lock(cogit_dir, timeout=2.0, poll=0.02):
+    """Exclusive lock over index read-modify-write cycles."""
+    path = os.path.join(cogit_dir, "index.json.lock")
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise ConcurrentUpdateError(
+                    f"index: locked by another process; if no cogit process is running, remove {path}"
+                ) from None
+            time.sleep(poll)
+    try:
+        yield
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
 
 EMPTY_INDEX = {
     "base_mindset": None,

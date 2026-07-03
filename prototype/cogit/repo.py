@@ -14,7 +14,7 @@ from .errors import (
     UnsupportedFormatError,
     UserError,
 )
-from .index_state import EMPTY_INDEX, index_is_empty, load_index, save_index
+from .index_state import EMPTY_INDEX, index_is_empty, index_lock, load_index, save_index
 from .objects import is_oid, validate_object
 from .refs import RefStore, validate_ref_name
 from .secrets import reject_suspected_secrets
@@ -182,8 +182,8 @@ class Repository:
 
     # -- staging ------------------------------------------------------------------
 
-    def add_fact(self, doc: dict):
-        """Write claim+assertion objects and stage the assertion. Returns (claim_oid, assertion_oid)."""
+    def _write_fact_objects(self, doc: dict):
+        """Validate a fact document and write its claim+assertion objects."""
         if not isinstance(doc, dict):
             raise UserError("add-fact: input must be a JSON object")
         unknown = set(doc) - {"claim", "assertion"}
@@ -208,14 +208,85 @@ class Repository:
             self._read_typed(claim_oid, "claim")
         assertion.setdefault("type", "assertion")
         assertion_oid = self.store.write(assertion)
+        return claim_oid, assertion_oid, assertion
 
-        index = load_index(self.cogit_dir)
-        self._pin_base_mindset(index)
-        if assertion_oid not in index["staged_facts"]:
-            index["staged_facts"].append(assertion_oid)
-            index["staged_facts"].sort()
-        save_index(self.cogit_dir, index)
+    def add_fact(self, doc: dict):
+        """Write claim+assertion objects and stage the assertion. Returns (claim_oid, assertion_oid)."""
+        claim_oid, assertion_oid, _assertion = self._write_fact_objects(doc)
+        with index_lock(self.cogit_dir):
+            index = load_index(self.cogit_dir)
+            self._pin_base_mindset(index)
+            if assertion_oid not in index["staged_facts"]:
+                index["staged_facts"].append(assertion_oid)
+                index["staged_facts"].sort()
+            save_index(self.cogit_dir, index)
         return claim_oid, assertion_oid
+
+    def micro_commit(self, doc: dict, message: str = None, author: str = None, timestamp: str = None):
+        """Record one belief as its own thought WITHOUT touching the shared
+        index (COG-035): mindset = parent's mindset + the new assertion,
+        published via ref old-target check with retry. Safe for parallel
+        agents by construction."""
+        claim_oid, assertion_oid, assertion = self._write_fact_objects(doc)
+        claim = self._read_typed(claim_oid, "claim")
+        message = message or f"{claim['kind']}: {claim['subject']} {claim['predicate']}"
+        author = author or assertion["actor"]
+        reject_suspected_secrets(message, "add-fact")
+
+        with index_lock(self.cogit_dir):
+            if not index_is_empty(load_index(self.cogit_dir)):
+                raise UserError(
+                    "add-fact: --commit refuses with a non-empty index (staged facts, removals, "
+                    "conflicts, or merge in progress) — a micro-commit must not invalidate staged work"
+                )
+            last_error = None
+            for _attempt in range(5):
+                branch, parent = self.head_info()
+                base_set = self._mindset_assertions(parent) if parent else set()
+                if assertion_oid in base_set:
+                    return {
+                        "claim": claim_oid,
+                        "assertion": assertion_oid,
+                        "thought": parent,
+                        "already_active": True,
+                    }
+                new_assertions = base_set | {assertion_oid}
+                # contradictions are rejected; refutation needs the staged flow
+                self._check_negation_consistency(new_assertions, dict(EMPTY_INDEX))
+                ts = timestamp or now_utc()
+                mindset_oid = self.store.write(
+                    {"type": "mindset", "assertions": sorted(new_assertions), "created_at": ts}
+                )
+                thought_oid = self.store.write(
+                    {
+                        "type": "thought",
+                        "parents": [parent] if parent else [],
+                        "mindset": mindset_oid,
+                        "operation": "commit",
+                        "message": message,
+                        "author": author,
+                        "timestamp": ts,
+                    }
+                )
+                try:
+                    if branch is not None:
+                        self.refs.update_ref(branch, thought_oid, parent, author, "commit", message, ts)
+                        self.refs.append_reflog("HEAD", parent, thought_oid, author, "commit", message, ts)
+                    else:
+                        self.refs.write_head(
+                            thought_oid, parent, author, "commit", message, ts, expected_raw=parent
+                        )
+                    return {
+                        "claim": claim_oid,
+                        "assertion": assertion_oid,
+                        "thought": thought_oid,
+                        "already_active": False,
+                    }
+                except ConcurrentUpdateError as exc:
+                    last_error = exc  # someone advanced HEAD; recompute from the new tip
+            raise ConcurrentUpdateError(
+                f"add-fact: ref kept moving during micro-commit; giving up after 5 attempts ({last_error})"
+            )
 
     def remove_fact(self, assertion_oid: str, reason: str):
         if not is_oid(assertion_oid):
@@ -223,20 +294,21 @@ class Repository:
         if not reason or not reason.strip():
             raise UserError("remove-fact: an explicit --reason is required")
         reject_suspected_secrets(reason, "remove-fact")
-        index = load_index(self.cogit_dir)
-        self._pin_base_mindset(index)
-        if assertion_oid in index["staged_facts"]:
-            index["staged_facts"].remove(assertion_oid)
+        with index_lock(self.cogit_dir):
+            index = load_index(self.cogit_dir)
+            self._pin_base_mindset(index)
+            if assertion_oid in index["staged_facts"]:
+                index["staged_facts"].remove(assertion_oid)
+                save_index(self.cogit_dir, index)
+                return "unstaged"
+            base_set = self._base_assertions(index)
+            if assertion_oid not in base_set:
+                raise UserError("remove-fact: assertion is neither staged nor active in the base mindset")
+            if all(entry["id"] != assertion_oid for entry in index["removed_facts"]):
+                index["removed_facts"].append({"id": assertion_oid, "reason": reason})
+                index["removed_facts"].sort(key=lambda entry: entry["id"])
             save_index(self.cogit_dir, index)
-            return "unstaged"
-        base_set = self._base_assertions(index)
-        if assertion_oid not in base_set:
-            raise UserError("remove-fact: assertion is neither staged nor active in the base mindset")
-        if all(entry["id"] != assertion_oid for entry in index["removed_facts"]):
-            index["removed_facts"].append({"id": assertion_oid, "reason": reason})
-            index["removed_facts"].sort(key=lambda entry: entry["id"])
-        save_index(self.cogit_dir, index)
-        return "removed"
+            return "removed"
 
     def _pin_base_mindset(self, index):
         """Record the mindset the staging round started from (first staging op)."""
@@ -262,6 +334,10 @@ class Repository:
         reject_suspected_secrets(message, "commit-thought")
         timestamp = timestamp or now_utc()
 
+        with index_lock(self.cogit_dir):
+            return self._commit_thought_locked(message, author, timestamp)
+
+    def _commit_thought_locked(self, message: str, author: str, timestamp: str) -> str:
         index = load_index(self.cogit_dir)
         if index["conflicts"]:
             raise UserError(
@@ -388,6 +464,10 @@ class Repository:
         ]
 
     def checkout(self, target: str, actor: str = "agent", timestamp: str = None):
+        with index_lock(self.cogit_dir):
+            return self._checkout_locked(target, actor, timestamp)
+
+    def _checkout_locked(self, target: str, actor: str, timestamp: str):
         index = load_index(self.cogit_dir)
         if not index_is_empty(index):
             raise UserError(
@@ -515,6 +595,10 @@ class Repository:
         return {aid: self._read_typed(aid, "assertion")["claim"] for aid in assertion_ids}
 
     def merge(self, target: str, actor: str = "agent", timestamp: str = None):
+        with index_lock(self.cogit_dir):
+            return self._merge_locked(target, actor, timestamp)
+
+    def _merge_locked(self, target: str, actor: str, timestamp: str):
         timestamp = timestamp or now_utc()
         index = load_index(self.cogit_dir)
         if not index_is_empty(index):
@@ -643,6 +727,10 @@ class Repository:
                          use_suggestion: bool = False):
         if sum([keep is not None, drop, use_suggestion]) != 1:
             raise UserError("resolve: exactly one of --keep <assertion-id>, --drop, or --suggested is required")
+        with index_lock(self.cogit_dir):
+            return self._resolve_conflict_locked(claim_oid, keep, drop, use_suggestion)
+
+    def _resolve_conflict_locked(self, claim_oid: str, keep, drop: bool, use_suggestion: bool):
         index = load_index(self.cogit_dir)
         entry = next((c for c in index["conflicts"] if c["claim"] == claim_oid), None)
         if entry is None:
@@ -762,7 +850,12 @@ class Repository:
         for refname, target in self.refs.list_refs("refs/anchors"):
             anchor = self._read_typed(target, "anchor")
             anchors.append(
-                {"name": refname[len("refs/anchors/") :], "anchor": target, "target": anchor["target"]}
+                {
+                    "name": refname[len("refs/anchors/") :],
+                    "anchor": target,
+                    "target": anchor["target"],
+                    "created_at": anchor["created_at"],
+                }
             )
         return anchors
 
@@ -852,20 +945,58 @@ class Repository:
             "predicate": claim["predicate"],
             "object": claim["object"],
             "negates": claim.get("negates"),
+            "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "status": assertion["status"],
         }
 
-    def facts(self, ref: str = None):
-        """Active facts of a thought, decoded enough to act on (pick IDs, judge beliefs)."""
+    @staticmethod
+    def _row_matches(row, subject=None, predicate=None, project=None) -> bool:
+        if subject is not None:
+            if subject.endswith("*"):
+                if not row["subject"].startswith(subject[:-1]):
+                    return False
+            elif row["subject"] != subject:
+                return False
+        if predicate is not None and row["predicate"] != predicate:
+            return False
+        if project is not None and row["qualifiers"].get("project") != project:
+            return False
+        return True
+
+    def facts(self, ref: str = None, subject: str = None, predicate: str = None, project: str = None):
+        """Active facts of a thought, decoded enough to act on (pick IDs, judge beliefs).
+
+        Filters (COG-036/037) are exact URI matching — subject accepts a
+        trailing '*' prefix wildcard; project matches the claim qualifier.
+        """
         thought_oid = self.resolve(ref or "HEAD")
-        rows = [self._fact_row(aid) for aid in sorted(self._mindset_assertions(thought_oid))]
+        rows = [
+            row
+            for aid in sorted(self._mindset_assertions(thought_oid))
+            if self._row_matches(row := self._fact_row(aid), subject, predicate, project)
+        ]
         return {"thought": thought_oid, "facts": rows}
 
-    def recap(self, source: str, target: str = None):
-        """Belief-state digest between two points — context recovery (COG-031)."""
+    def recap(self, source: str = None, target: str = None):
+        """Belief-state digest between two points — context recovery (COG-031).
+
+        With no source (COG-036), recap starts from the NEWEST anchor, or
+        the root thought when no anchors exist.
+        """
         to_oid = self.resolve(target or "HEAD")
+        from_anchor = None
+        if source is None:
+            anchors = self.list_anchors()
+            if anchors:
+                newest = max(anchors, key=lambda a: (a["created_at"], a["name"]))
+                from_anchor = newest["name"]
+                from_oid = newest["target"]
+            else:
+                ancestry = self._ancestry(to_oid)
+                from_oid = self._topo_oldest_first(ancestry)[0]
+            source = from_oid
         from_oid = self.resolve(source)
         thoughts = []
         if from_oid != to_oid:
@@ -884,6 +1015,8 @@ class Repository:
         to_set = self._mindset_assertions(to_oid)
         return {
             "from": from_oid,
+            "from_anchor": from_anchor,
+            "same_point": from_oid == to_oid,
             "to": to_oid,
             "thoughts": thoughts,
             "added": [self._fact_row(aid) for aid in sorted(to_set - from_set)],

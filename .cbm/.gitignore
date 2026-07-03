@@ -1,0 +1,4 @@
+# codebase-memory-mcp data files — local to each machine, not for committing.
+# Ignore everything in this directory except .gitignore itself.
+*
+!.gitignore

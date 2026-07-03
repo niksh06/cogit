@@ -128,34 +128,29 @@ def cmd_add_fact(args):
     else:
         raise UserError("add-fact: provide a JSON document, '-' for stdin, or shorthand flags (--kind ...)")
 
-    if args.commit:
-        from .index_state import index_is_empty, load_index
+    if args.project and isinstance(doc, dict) and isinstance(doc.get("claim"), dict):
+        doc["claim"].setdefault("qualifiers", {}).setdefault("project", args.project)
 
-        if not index_is_empty(load_index(repo.cogit_dir)):
-            raise UserError(
-                "add-fact: --commit refuses with a non-empty index (staged facts, removals, "
-                "conflicts, or merge in progress) — a micro-commit must not swallow unrelated state"
-            )
+    if args.commit:
+        # atomic micro-commit: bypasses the shared index entirely (COG-035)
+        result = repo.micro_commit(doc, message=args.message, author=args.author, timestamp=args.timestamp)
+        if args.json:
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        print(f"claim     {result['claim']}")
+        if result["already_active"]:
+            print(f"already active at {result['thought']}")
+        else:
+            print(f"asserted  {result['assertion']}")
+            print(f"committed {result['thought']}")
+        return 0
 
     claim_oid, assertion_oid = repo.add_fact(doc)
-    thought_oid = None
-    if args.commit:
-        claim = repo.store.read(claim_oid)
-        assertion = repo.store.read(assertion_oid)
-        message = args.message or f"{claim['kind']}: {claim['subject']} {claim['predicate']}"
-        author = args.author or assertion["actor"]
-        thought_oid = repo.commit_thought(message, author, args.timestamp)
-
     if args.json:
-        payload = {"claim": claim_oid, "assertion": assertion_oid}
-        if thought_oid:
-            payload["thought"] = thought_oid
-        print(json.dumps(payload, sort_keys=True))
+        print(json.dumps({"claim": claim_oid, "assertion": assertion_oid}, sort_keys=True))
         return 0
     print(f"claim     {claim_oid}")
     print(f"staged    {assertion_oid}")
-    if thought_oid:
-        print(f"committed {thought_oid}")
     return 0
 
 
@@ -402,7 +397,7 @@ def _print_fact_rows(rows):
 
 def cmd_facts(args):
     repo = _open_repo(args)
-    result = repo.facts(args.ref)
+    result = repo.facts(args.ref, subject=args.subject, predicate=args.predicate, project=args.project)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
         return 0
@@ -419,7 +414,10 @@ def cmd_recap(args):
         return 0
     position = result["position"]
     where = f"branch {position['branch']}" if not position["detached"] else "detached HEAD"
-    print(f"recap {_short(result['from'])} -> {_short(result['to'])} ({len(result['thoughts'])} thought(s))")
+    origin = f" (anchor {result['from_anchor']})" if result.get("from_anchor") else ""
+    if result.get("same_point"):
+        print(f"recap: you are exactly at {_short(result['from'])}{origin} — nothing new")
+    print(f"recap {_short(result['from'])}{origin} -> {_short(result['to'])} ({len(result['thoughts'])} thought(s))")
     for thought in result["thoughts"]:
         print(f"  {_short(thought['id'])} {thought['timestamp']} {thought['operation']:7} {thought['message']}")
     print(f"beliefs: +{len(result['added'])} -{len(result['removed'])}")
@@ -635,7 +633,8 @@ def build_parser():
     p.add_argument("--actor", default="agent", help="shorthand: asserting actor")
     p.add_argument("--method", default="cli", help="shorthand: method type")
     p.add_argument("--asserted-at", dest="asserted_at", help="shorthand: ISO-8601 UTC override (default: now)")
-    p.add_argument("--commit", action="store_true", help="commit a thought immediately (micro-commit)")
+    p.add_argument("--project", help="shared-journal convention: sets the project qualifier (COG-037)")
+    p.add_argument("--commit", action="store_true", help="atomic micro-commit: bypasses the shared index (COG-035)")
     p.add_argument("--message", "-m", help="thought message for --commit (default: derived from claim)")
     p.add_argument("--author", help="thought author for --commit (default: assertion actor)")
     p.add_argument("--timestamp", help="thought timestamp for --commit (tests)")
@@ -753,11 +752,14 @@ def build_parser():
 
     p = sub.add_parser("facts", help="list active facts of a thought (default: HEAD)")
     p.add_argument("ref", nargs="?")
+    p.add_argument("--subject", help="filter: exact subject URI, or prefix with trailing '*'")
+    p.add_argument("--predicate", help="filter: exact predicate")
+    p.add_argument("--project", help="filter: project qualifier (COG-037)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_facts)
 
     p = sub.add_parser("recap", help="belief-state digest between two points (context recovery)")
-    p.add_argument("source", help="anchor, ref, or thought to recap from")
+    p.add_argument("source", nargs="?", help="anchor, ref, or thought to recap from (default: newest anchor)")
     p.add_argument("target", nargs="?", help="default: HEAD")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_recap)

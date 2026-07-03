@@ -43,9 +43,10 @@ TOOLS = [
     {
         "name": "add_fact",
         "description": (
-            "Record a belief: write a claim and a provenance-bearing assertion, stage it, and "
-            "optionally commit a thought immediately (micro-commit). One proposition per claim; "
-            "object is a value, not a sentence."
+            "Record a belief: write a claim and a provenance-bearing assertion. With commit=true "
+            "this is an ATOMIC micro-commit that bypasses the shared index — safe for parallel "
+            "agents on one journal. One proposition per claim; object is a value, not a sentence. "
+            "In a shared journal always set project."
         ),
         "inputSchema": _schema(
             {
@@ -56,12 +57,13 @@ TOOLS = [
                 "predicate": {"type": "string"},
                 "object": {"type": ["string", "integer", "boolean"]},
                 "qualifiers": {"type": "object"},
+                "project": {"type": "string", "description": "shared-journal convention: project qualifier"},
                 "negates": {**OID, "description": "claim id this claim negates"},
                 "source": {"type": "string", "description": "type[:uri], e.g. agent:session-x"},
                 "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
                 "actor": {"type": "string", "default": "agent"},
                 "method": {"type": "string", "default": "mcp"},
-                "commit": {"type": "boolean", "description": "commit a thought immediately"},
+                "commit": {"type": "boolean", "description": "atomic micro-commit (parallel-safe)"},
                 "message": {"type": "string", "description": "thought message when commit=true"},
             },
             required=("kind", "subject", "predicate", "object", "source", "confidence_bps"),
@@ -88,16 +90,24 @@ TOOLS = [
     },
     {
         "name": "facts",
-        "description": "Active beliefs of a thought (default HEAD) with decoded claim content.",
-        "inputSchema": _schema({"ref": REF}),
+        "description": (
+            "Active beliefs of a thought (default HEAD) with decoded claim content. Filter with "
+            "subject (exact URI or trailing-* prefix), predicate, project — exact matching, not search."
+        ),
+        "inputSchema": _schema({
+            "ref": REF,
+            "subject": {"type": "string", "description": "exact subject URI, or prefix with trailing '*'"},
+            "predicate": {"type": "string"},
+            "project": {"type": "string"},
+        }),
     },
     {
         "name": "recap",
         "description": (
-            "Context recovery: thoughts and net belief changes between a past point "
-            "(anchor/thought) and now. Use this first when resuming work."
+            "Context recovery: thoughts and net belief changes between a past point and now. "
+            "Call with NO arguments when resuming work — it starts from the newest anchor."
         ),
-        "inputSchema": _schema({"from": REF, "to": REF}, required=("from",)),
+        "inputSchema": _schema({"from": REF, "to": REF}),
     },
     {
         "name": "log",
@@ -207,13 +217,16 @@ class CogitTools:
         source = {"type": source_type}
         if source_uri:
             source["uri"] = source_uri
+        qualifiers = dict(args.get("qualifiers", {}))
+        if args.get("project"):
+            qualifiers.setdefault("project", args["project"])
         claim = {
             "type": "claim",
             "kind": args["kind"],
             "subject": args["subject"],
             "predicate": args["predicate"],
             "object": args["object"],
-            "qualifiers": args.get("qualifiers", {}),
+            "qualifiers": qualifiers,
         }
         if args.get("negates"):
             negates = args["negates"]
@@ -230,12 +243,11 @@ class CogitTools:
                 "method": {"type": args.get("method", "mcp")},
             },
         }
-        claim_oid, assertion_oid = self.repo.add_fact(doc)
-        result = {"claim": claim_oid, "assertion": assertion_oid}
         if args.get("commit"):
-            message = args.get("message") or f"{args['kind']}: {args['subject']} {args['predicate']}"
-            result["thought"] = self.repo.commit_thought(message, args.get("actor", "agent"))
-        return result
+            # atomic micro-commit: parallel-safe by construction (COG-035)
+            return self.repo.micro_commit(doc, message=args.get("message"))
+        claim_oid, assertion_oid = self.repo.add_fact(doc)
+        return {"claim": claim_oid, "assertion": assertion_oid}
 
     def tool_remove_fact(self, args):
         oid = self.repo.expand_object_id(args["assertion_id"])
@@ -248,10 +260,15 @@ class CogitTools:
         return self.repo.status()
 
     def tool_facts(self, args):
-        return self.repo.facts(args.get("ref"))
+        return self.repo.facts(
+            args.get("ref"),
+            subject=args.get("subject"),
+            predicate=args.get("predicate"),
+            project=args.get("project"),
+        )
 
     def tool_recap(self, args):
-        return self.repo.recap(args["from"], args.get("to"))
+        return self.repo.recap(args.get("from"), args.get("to"))
 
     def tool_log(self, args):
         thoughts = self.repo.log(args.get("ref"))
