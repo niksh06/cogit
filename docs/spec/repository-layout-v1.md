@@ -95,6 +95,13 @@ Field semantics:
 
 The index is mutable. It must not be treated as committed history.
 
+Concurrency contract (COG-035): every read-modify-write of `index.json`
+runs under `index.json.lock` (exclusive create, bounded retry, then the
+concurrency exit code with a stale-lock hint). Lock ordering: the index
+lock may be held while taking ref locks, never the reverse. Atomic
+micro-commits (`add-fact --commit`) bypass the index entirely and rely on
+ref old-target checks, so parallel writers on one repository are safe.
+
 ### `rerere.json` (optional)
 
 Local conflict-resolution memory (COG-020): a map of normalized conflict

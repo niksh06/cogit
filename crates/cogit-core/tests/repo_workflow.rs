@@ -133,6 +133,60 @@ fn contradictory_commit_rejected_then_refute_flow() {
 }
 
 #[test]
+fn parallel_micro_commits_all_land() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    init_repository(dir.path()).expect("init");
+    let path = dir.path().to_path_buf();
+    let writers = 2;
+    let per_writer = 5;
+    let handles: Vec<_> = (0..writers)
+        .map(|w| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let repo = Repository::open(&path).expect("open");
+                for n in 0..per_writer {
+                    repo.micro_commit(&fact_doc(&format!("w{w}-fact-{n}"), 9000), None, None, None)
+                        .expect("micro commit");
+                }
+            })
+        })
+        .collect();
+    for handle in handles {
+        handle.join().expect("writer thread");
+    }
+    let repo = Repository::open(&path).expect("open");
+    let facts = repo.facts(None, None, None, None).expect("facts");
+    assert_eq!(facts["facts"].as_array().unwrap().len(), writers * per_writer);
+    assert_eq!(repo.log(None).expect("log").len(), writers * per_writer); // linear history
+    let errors: Vec<Value> = verify_repository(&repo)
+        .into_iter()
+        .filter(|f| f["severity"] == "error")
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn micro_commit_noop_and_filters() {
+    let (_dir, repo) = make_repo();
+    let mut doc = fact_doc("filters", 9000);
+    doc["claim"]["qualifiers"] = json!({"project": "alpha"});
+    let first = repo.micro_commit(&doc, None, None, Some(&ts(0))).unwrap();
+    assert_eq!(first["already_active"], false);
+    let again = repo.micro_commit(&doc, None, None, Some(&ts(1))).unwrap();
+    assert_eq!(again["already_active"], true);
+    assert_eq!(again["thought"], first["thought"]);
+    // filters: subject prefix + project qualifier
+    let rows = repo.facts(None, Some("test*"), None, Some("alpha")).unwrap();
+    assert_eq!(rows["facts"].as_array().unwrap().len(), 1);
+    let none = repo.facts(None, None, None, Some("beta")).unwrap();
+    assert_eq!(none["facts"].as_array().unwrap().len(), 0);
+    // no-arg recap: no anchors -> from root; same_point at the single thought
+    let recap = repo.recap(None, None).unwrap();
+    assert_eq!(recap["same_point"], true);
+    assert_eq!(recap["from_anchor"], Value::Null);
+}
+
+#[test]
 fn concurrent_ref_update_rejected() {
     let (_dir, repo) = make_repo();
     repo.add_fact(&fact_doc("base", 9000)).unwrap();

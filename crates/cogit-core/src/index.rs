@@ -11,6 +11,39 @@ use serde_json::{json, Value};
 use crate::error::{CoreError, Result};
 use crate::objects::is_oid;
 
+/// Exclusive lock over index read-modify-write cycles (COG-035).
+/// Lock ordering: may be held while taking ref locks, never the reverse.
+pub struct IndexLock {
+    path: std::path::PathBuf,
+}
+
+impl IndexLock {
+    pub fn acquire(cogit_dir: &Path, timeout: std::time::Duration) -> Result<Self> {
+        let path = cogit_dir.join("index.json.lock");
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(_) => return Ok(IndexLock { path }),
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(_) => {
+                    return Err(CoreError::Concurrent(format!(
+                        "index: locked by another process; if no cogit process is running, remove {}",
+                        path.display()
+                    )))
+                }
+            }
+        }
+    }
+}
+
+impl Drop for IndexLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 pub fn empty_index() -> Value {
     json!({
         "base_mindset": null,

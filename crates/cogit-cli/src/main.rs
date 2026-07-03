@@ -73,6 +73,8 @@ enum Cmd {
         #[arg(long = "asserted-at")]
         asserted_at: Option<String>,
         #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
         commit: bool,
         #[arg(long, short)]
         message: Option<String>,
@@ -189,7 +191,7 @@ enum Cmd {
     },
     /// belief-state digest between two points (context recovery)
     Recap {
-        source: String,
+        source: Option<String>,
         target: Option<String>,
         #[arg(long)]
         json: bool,
@@ -197,6 +199,12 @@ enum Cmd {
     /// list active facts of a thought (default: HEAD)
     Facts {
         r#ref: Option<String>,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        predicate: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -455,7 +463,7 @@ fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::AddFact {
             fact, kind, subject, predicate, object_value, object_json, qualifiers, negates,
-            source, confidence, actor, method, asserted_at, commit, message, author, timestamp, json,
+            source, confidence, actor, method, asserted_at, project, commit, message, author, timestamp, json,
         } => {
             let repo = open_repo(&cli.repo)?;
             if fact.is_some() && kind.is_some() {
@@ -479,45 +487,41 @@ fn run(cli: Cli) -> Result<i32> {
                     "add-fact: provide a JSON document, '-' for stdin, or shorthand flags (--kind ...)".into(),
                 ));
             };
-            if commit {
-                let index = cogit_core::index::load_index(&repo.cogit_dir)?;
-                if !cogit_core::index::index_is_empty(&index) {
-                    return Err(CoreError::User(
-                        "add-fact: --commit refuses with a non-empty index (staged facts, removals, \
-                         conflicts, or merge in progress) — a micro-commit must not swallow unrelated state"
-                            .into(),
-                    ));
+            let mut doc = doc;
+            if let Some(project) = &project {
+                if let Some(claim) = doc.get_mut("claim").and_then(Value::as_object_mut) {
+                    let quals = claim
+                        .entry("qualifiers".to_owned())
+                        .or_insert_with(|| json!({}));
+                    if let Some(quals) = quals.as_object_mut() {
+                        quals.entry("project".to_owned()).or_insert_with(|| json!(project));
+                    }
                 }
+            }
+            if commit {
+                // atomic micro-commit: bypasses the shared index (COG-035)
+                let result =
+                    repo.micro_commit(&doc, message.as_deref(), author.as_deref(), timestamp.as_deref())?;
+                if json {
+                    println!("{result}");
+                    return Ok(0);
+                }
+                println!("claim     {}", result["claim"].as_str().unwrap_or(""));
+                if result["already_active"].as_bool().unwrap_or(false) {
+                    println!("already active at {}", result["thought"].as_str().unwrap_or("null"));
+                } else {
+                    println!("asserted  {}", result["assertion"].as_str().unwrap_or(""));
+                    println!("committed {}", result["thought"].as_str().unwrap_or(""));
+                }
+                return Ok(0);
             }
             let (claim_oid, assertion_oid) = repo.add_fact(&doc)?;
-            let mut thought_oid = None;
-            if commit {
-                let claim = repo.store.read(&claim_oid)?;
-                let assertion = repo.store.read(&assertion_oid)?;
-                let message = message.unwrap_or_else(|| {
-                    format!(
-                        "{}: {} {}",
-                        claim["kind"].as_str().unwrap_or(""),
-                        claim["subject"].as_str().unwrap_or(""),
-                        claim["predicate"].as_str().unwrap_or("")
-                    )
-                });
-                let author = author.unwrap_or_else(|| assertion["actor"].as_str().unwrap_or("agent").to_owned());
-                thought_oid = Some(repo.commit_thought(&message, &author, timestamp.as_deref())?);
-            }
             if json {
-                let mut payload = json!({"claim": claim_oid, "assertion": assertion_oid});
-                if let Some(thought) = &thought_oid {
-                    payload["thought"] = json!(thought);
-                }
-                println!("{payload}");
+                println!("{}", json!({"claim": claim_oid, "assertion": assertion_oid}));
                 return Ok(0);
             }
             println!("claim     {claim_oid}");
             println!("staged    {assertion_oid}");
-            if let Some(thought) = thought_oid {
-                println!("committed {thought}");
-            }
             Ok(0)
         }
         Cmd::RemoveFact { assertion_id, reason, json } => {
@@ -830,7 +834,7 @@ fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::Recap { source, target, json } => {
             let repo = open_repo(&cli.repo)?;
-            let result = repo.recap(&source, target.as_deref())?;
+            let result = repo.recap(source.as_deref(), target.as_deref())?;
             if json {
                 println!("{}", pretty(&result));
                 return Ok(0);
@@ -892,9 +896,9 @@ fn run(cli: Cli) -> Result<i32> {
             );
             Ok(0)
         }
-        Cmd::Facts { r#ref, json } => {
+        Cmd::Facts { r#ref, subject, predicate, project, json } => {
             let repo = open_repo(&cli.repo)?;
-            let result = repo.facts(r#ref.as_deref())?;
+            let result = repo.facts(r#ref.as_deref(), subject.as_deref(), predicate.as_deref(), project.as_deref())?;
             if json {
                 println!("{}", pretty(&result));
                 return Ok(0);

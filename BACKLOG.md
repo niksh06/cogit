@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-02T21:30:00+03:00
+updated_datetime: 2026-07-03T12:00:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -41,6 +41,10 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-013 | Rust port: `cogit-core` + `cogit-cli`, full command parity, golden vectors byte-for-byte | `issues/COG-013.md`, ADR-0007 | `cargo test` (12 tests, clippy clean); `tools/interop-test.sh`: Python↔Rust drive one repository interchangeably (ids, conflicts, rerere fingerprints, annotations, metrics all agree) |
 | COG-029 | MCP server: stdio JSON-RPC, 18 tools, destructive ops excluded per ADR-0009 | `issues/COG-029.md` | `test_mcp_server.py`: real subprocess handshake, tool listing, full workflow (micro-commit→anchor→blame→recap→verify), soft errors incl. secret rejection |
 | COG-032 | Claim-modeling cookbook: 7 rules, confidence bands, worked example | `issues/COG-032.md` | `docs/claim-modeling.md`; linked from README and integrations README |
+| COG-035 | Atomic micro-commit + index.json.lock — parallel agents safe by construction (supersedes COG-033) | `issues/COG-035.md` | thread-parallel tests both runtimes (2 writers x 5, nothing lost); interop steps |
+| COG-036 | facts subject/predicate/project filters; no-arg recap from newest anchor with from_anchor/same_point | `issues/COG-036.md` | `test_concurrency.py::BeliefQueryTests`; rust `micro_commit_noop_and_filters`; interop no-arg recap step |
+| COG-037 | Project qualifier convention for shared journals (--project, MCP arg, cookbook Rule 8) | `issues/COG-037.md` | claim-identity test; interop project-filter step |
+| COG-033 | Multi-process index safety — implemented by COG-035 (lockfile + atomic micro-commit) | `issues/COG-033.md` | superseded; see COG-035 verification |
 
 ## Open — next
 
@@ -52,5 +56,4 @@ Story references point to `user_stories/agent-user-stories.md`.
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-033 | Multi-process index safety (model-review finding) | P2 | `issues/COG-033.md` |
 | COG-026 | Trust layer: signatures, quarantine, imports — DEFERRED by roadmap entry criteria: no cross-process/team/machine sharing exists yet (Phase 7); building crypto before that is speculative architecture the project's own stop-conditions forbid | P2 | US-023, US-024, OQ-012 |

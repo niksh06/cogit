@@ -136,6 +136,15 @@ cogit add-fact --kind agent_decision --subject "bug:auth-timeout" \
 The two assertions share one claim; history shows belief strengthening
 from 7500 (inference) to 9900 (verified), each with its own source.
 
+## Rule 8: in a shared journal, always set project
+
+One journal serving several projects (the shared-journal setup) needs
+project identity on every claim — otherwise `beliefs about X` mixes
+codebases. Use the `project` qualifier (`--project cogit`, MCP `project`
+arg): subjects stay natural entity URIs, and claim identity still
+separates projects because qualifiers are part of the canonical claim.
+Filter with `cogit facts --project cogit` or `--subject 'cogit:*'`.
+
 ## References
 
 - `docs/spec/object-format-v1.md` — schemas and canonical rules

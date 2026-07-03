@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 use crate::error::{CoreError, Result};
-use crate::index::{empty_index, index_is_empty, load_index, save_index};
+use crate::index::{empty_index, index_is_empty, load_index, save_index, IndexLock};
 use crate::objects::is_oid;
 use crate::refs::{validate_ref_name, Head, RefStore};
 use crate::rerere;
@@ -17,6 +17,7 @@ use crate::store::ObjectStore;
 use crate::time::now_utc;
 
 const DEFAULT_CONFIG: &str = "[core]\n\trepositoryFormatVersion = 1\n[extensions]\n\tobjectFormat = sha256\n";
+const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn user_err<T>(msg: impl Into<String>) -> Result<T> {
     Err(CoreError::User(msg.into()))
@@ -239,8 +240,8 @@ impl Repository {
 
     // -- staging ------------------------------------------------------------------------
 
-    /// Returns (claim_oid, assertion_oid).
-    pub fn add_fact(&self, doc: &Value) -> Result<(String, String)> {
+    /// Validate a fact document and write its claim+assertion objects.
+    fn write_fact_objects(&self, doc: &Value) -> Result<(String, String, Value)> {
         let map = doc
             .as_object()
             .ok_or_else(|| CoreError::User("add-fact: input must be a JSON object".into()))?;
@@ -281,8 +282,15 @@ impl Repository {
             }
         };
         assertion.entry("type".to_owned()).or_insert(json!("assertion"));
-        let assertion_oid = self.store.write(&Value::Object(assertion))?;
+        let assertion_value = Value::Object(assertion);
+        let assertion_oid = self.store.write(&assertion_value)?;
+        Ok((claim_oid, assertion_oid, assertion_value))
+    }
 
+    /// Returns (claim_oid, assertion_oid).
+    pub fn add_fact(&self, doc: &Value) -> Result<(String, String)> {
+        let (claim_oid, assertion_oid, _assertion) = self.write_fact_objects(doc)?;
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let mut index = load_index(&self.cogit_dir)?;
         self.pin_base_mindset(&mut index)?;
         let staged = index["staged_facts"].as_array_mut().expect("staged");
@@ -294,6 +302,99 @@ impl Repository {
         Ok((claim_oid, assertion_oid))
     }
 
+    /// Record one belief as its own thought WITHOUT touching the shared
+    /// index (COG-035): mindset = parent's mindset + the new assertion,
+    /// published via ref old-target check with retry. Parallel-safe.
+    pub fn micro_commit(
+        &self,
+        doc: &Value,
+        message: Option<&str>,
+        author: Option<&str>,
+        timestamp: Option<&str>,
+    ) -> Result<Value> {
+        let (claim_oid, assertion_oid, assertion) = self.write_fact_objects(doc)?;
+        let claim = self.read_typed(&claim_oid, "claim")?;
+        let message = message.map(str::to_owned).unwrap_or_else(|| {
+            format!(
+                "{}: {} {}",
+                claim["kind"].as_str().unwrap_or(""),
+                claim["subject"].as_str().unwrap_or(""),
+                claim["predicate"].as_str().unwrap_or("")
+            )
+        });
+        let author = author
+            .map(str::to_owned)
+            .unwrap_or_else(|| assertion["actor"].as_str().unwrap_or("agent").to_owned());
+        reject_suspected_secrets(&json!(message), "add-fact")?;
+
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
+        if !index_is_empty(&load_index(&self.cogit_dir)?) {
+            return user_err(
+                "add-fact: --commit refuses with a non-empty index (staged facts, removals, \
+                 conflicts, or merge in progress) — a micro-commit must not invalidate staged work",
+            );
+        }
+        let mut last_error = String::new();
+        for _attempt in 0..5 {
+            let (branch, parent) = self.head_info()?;
+            let base_set = self.mindset_assertions(parent.as_deref())?;
+            if base_set.contains(&assertion_oid) {
+                return Ok(json!({
+                    "claim": claim_oid,
+                    "assertion": assertion_oid,
+                    "thought": parent,
+                    "already_active": true,
+                }));
+            }
+            let mut new_assertions = base_set;
+            new_assertions.insert(assertion_oid.clone());
+            self.check_negation_consistency(&new_assertions, &empty_index())?;
+            let ts = timestamp.map(str::to_owned).unwrap_or_else(now_utc);
+            let mindset_oid = self.store.write(&json!({
+                "type": "mindset",
+                "assertions": new_assertions.iter().collect::<Vec<_>>(),
+                "created_at": ts,
+            }))?;
+            let thought_oid = self.store.write(&json!({
+                "type": "thought",
+                "parents": parent.iter().cloned().collect::<Vec<_>>(),
+                "mindset": mindset_oid,
+                "operation": "commit",
+                "message": message,
+                "author": author,
+                "timestamp": ts,
+            }))?;
+            let publish = match &branch {
+                Some(branch) => self
+                    .refs
+                    .update_ref(branch, &thought_oid, parent.as_deref(), &author, "commit", &message, &ts)
+                    .and_then(|_| {
+                        self.refs.append_reflog(
+                            "HEAD", parent.as_deref(), &thought_oid, &author, "commit", &message, &ts,
+                        )
+                    }),
+                None => self.refs.write_head(
+                    &thought_oid, parent.as_deref(), &author, "commit", &message, &ts, parent.as_deref(),
+                ),
+            };
+            match publish {
+                Ok(()) => {
+                    return Ok(json!({
+                        "claim": claim_oid,
+                        "assertion": assertion_oid,
+                        "thought": thought_oid,
+                        "already_active": false,
+                    }))
+                }
+                Err(CoreError::Concurrent(msg)) => last_error = msg, // recompute from new tip
+                Err(other) => return Err(other),
+            }
+        }
+        Err(CoreError::Concurrent(format!(
+            "add-fact: ref kept moving during micro-commit; giving up after 5 attempts ({last_error})"
+        )))
+    }
+
     pub fn remove_fact(&self, assertion_oid: &str, reason: &str) -> Result<&'static str> {
         if !is_oid(assertion_oid) {
             return user_err(format!("remove-fact: invalid assertion id '{assertion_oid}'"));
@@ -302,6 +403,7 @@ impl Repository {
             return user_err("remove-fact: an explicit --reason is required");
         }
         reject_suspected_secrets(&json!(reason), "remove-fact")?;
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let mut index = load_index(&self.cogit_dir)?;
         self.pin_base_mindset(&mut index)?;
         let staged = index["staged_facts"].as_array().expect("staged").clone();
@@ -428,6 +530,7 @@ impl Repository {
         reject_suspected_secrets(&json!(message), "commit-thought")?;
         let timestamp = timestamp.map(str::to_owned).unwrap_or_else(now_utc);
 
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let index = load_index(&self.cogit_dir)?;
         let conflicts = index["conflicts"].as_array().expect("conflicts");
         if !conflicts.is_empty() {
@@ -566,6 +669,7 @@ impl Repository {
 
     /// Returns (mode, thought oid) where mode is "branch" or "detached".
     pub fn checkout(&self, target: &str, actor: &str, timestamp: Option<&str>) -> Result<(String, String)> {
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let index = load_index(&self.cogit_dir)?;
         if !index_is_empty(&index) {
             return user_err(
@@ -742,6 +846,7 @@ impl Repository {
     // -- merge ---------------------------------------------------------------------------------------
 
     pub fn merge(&self, target: &str, actor: &str, timestamp: Option<&str>) -> Result<Value> {
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let timestamp = timestamp.map(str::to_owned).unwrap_or_else(now_utc);
         let index = load_index(&self.cogit_dir)?;
         if !index_is_empty(&index) {
@@ -888,6 +993,7 @@ impl Repository {
         if mode_count != 1 {
             return user_err("resolve: exactly one of --keep <assertion-id>, --drop, or --suggested is required");
         }
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
         let mut index = load_index(&self.cogit_dir)?;
         let entry = index["conflicts"]
             .as_array()
@@ -1077,6 +1183,7 @@ impl Repository {
                 "name": refname["refs/anchors/".len()..],
                 "anchor": target,
                 "target": anchor["target"],
+                "created_at": anchor["created_at"],
             }));
         }
         Ok(anchors)
@@ -1206,19 +1313,59 @@ impl Repository {
             "predicate": claim["predicate"],
             "object": claim["object"],
             "negates": claim.get("negates").cloned().unwrap_or(Value::Null),
+            "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "status": assertion["status"],
         }))
     }
 
-    pub fn facts(&self, r#ref: Option<&str>) -> Result<Value> {
+    fn row_matches(row: &Value, subject: Option<&str>, predicate: Option<&str>, project: Option<&str>) -> bool {
+        if let Some(subject) = subject {
+            let actual = row["subject"].as_str().unwrap_or("");
+            match subject.strip_suffix('*') {
+                Some(prefix) => {
+                    if !actual.starts_with(prefix) {
+                        return false;
+                    }
+                }
+                None => {
+                    if actual != subject {
+                        return false;
+                    }
+                }
+            }
+        }
+        if let Some(predicate) = predicate {
+            if row["predicate"].as_str() != Some(predicate) {
+                return false;
+            }
+        }
+        if let Some(project) = project {
+            if row["qualifiers"]["project"].as_str() != Some(project) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Filters (COG-036/037) are exact URI matching; subject accepts a
+    /// trailing '*' prefix wildcard, project matches the claim qualifier.
+    pub fn facts(
+        &self,
+        r#ref: Option<&str>,
+        subject: Option<&str>,
+        predicate: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<Value> {
         let thought_oid = self.resolve(r#ref.unwrap_or("HEAD"))?;
-        let rows: Vec<Value> = self
-            .mindset_assertions(Some(&thought_oid))?
-            .iter()
-            .map(|aid| self.fact_row(aid))
-            .collect::<Result<_>>()?;
+        let mut rows: Vec<Value> = Vec::new();
+        for aid in self.mindset_assertions(Some(&thought_oid))? {
+            let row = self.fact_row(&aid)?;
+            if Self::row_matches(&row, subject, predicate, project) {
+                rows.push(row);
+            }
+        }
         Ok(json!({"thought": thought_oid, "facts": rows}))
     }
 
@@ -1227,14 +1374,37 @@ impl Repository {
         let thought = self.read_typed(&thought_oid, "thought")?;
         let mut out = thought;
         out["id"] = json!(thought_oid);
-        out["facts"] = self.facts(Some(&thought_oid))?["facts"].clone();
+        out["facts"] = self.facts(Some(&thought_oid), None, None, None)?["facts"].clone();
         Ok(out)
     }
 
     /// Belief-state digest between two points — context recovery (COG-031).
-    pub fn recap(&self, source: &str, target: Option<&str>) -> Result<Value> {
+    /// With no source (COG-036), starts from the NEWEST anchor, or the
+    /// root thought when no anchors exist.
+    pub fn recap(&self, source: Option<&str>, target: Option<&str>) -> Result<Value> {
         let to_oid = self.resolve(target.unwrap_or("HEAD"))?;
-        let from_oid = self.resolve(source)?;
+        let mut from_anchor: Option<String> = None;
+        let from_oid = match source {
+            Some(source) => self.resolve(source)?,
+            None => {
+                let anchors = self.list_anchors()?;
+                match anchors.iter().max_by_key(|a| {
+                    (
+                        a["created_at"].as_str().unwrap_or("").to_owned(),
+                        a["name"].as_str().unwrap_or("").to_owned(),
+                    )
+                }) {
+                    Some(newest) => {
+                        from_anchor = newest["name"].as_str().map(str::to_owned);
+                        newest["target"].as_str().expect("anchor target").to_owned()
+                    }
+                    None => {
+                        let ancestry = self.ancestry(&to_oid)?;
+                        self.topo_oldest_first(&ancestry)?[0].clone()
+                    }
+                }
+            }
+        };
         let mut thoughts_out = Vec::new();
         if from_oid != to_oid {
             let ancestry_to = self.ancestry(&to_oid)?;
@@ -1264,6 +1434,8 @@ impl Repository {
             from_set.difference(&to_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
         Ok(json!({
             "from": from_oid,
+            "from_anchor": from_anchor,
+            "same_point": from_oid == to_oid,
             "to": to_oid,
             "thoughts": thoughts_out,
             "added": added,

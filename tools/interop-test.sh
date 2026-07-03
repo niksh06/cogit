@@ -98,4 +98,21 @@ RSC=$($RUST count-objects --json | $PYBIN -c 'import json,sys; d=json.load(sys.s
 [ "$PYC" = "$RSC" ] || fail "metrics disagree: $PYC vs $RSC"
 ok
 
+step "micro-commits: rust writes with project, python filters find it"
+$RUST add-fact --kind agent_decision --subject interop:micro --predicate landed \
+  --object yes --source agent:interop --confidence 9000 --actor rs \
+  --asserted-at $TS8 --project interop --commit --timestamp $TS8 >/dev/null
+COUNT=$($PY facts --project interop --json | $PYBIN -c 'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
+[ "$COUNT" = "1" ] || fail "python project filter sees $COUNT facts"
+COUNT=$($RUST facts --subject 'interop:*' --json | $PYBIN -c 'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
+[ "$COUNT" = "1" ] || fail "rust subject filter sees $COUNT facts"
+ok
+
+step "no-arg recap agrees and reports the anchor"
+$PY anchor interop-done HEAD --timestamp $TS8 >/dev/null
+PYR=$($PY recap --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(d["from_anchor"], d["same_point"])')
+RSR=$($RUST recap --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(d["from_anchor"], d["same_point"])')
+[ "$PYR" = "$RSR" ] || fail "no-arg recap disagrees: $PYR vs $RSR"
+ok
+
 echo "INTEROP OK: Python and Rust drive one repository interchangeably"

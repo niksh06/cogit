@@ -97,10 +97,15 @@ Rules:
   (COG-030).
 - The `assertion.claim` reference is filled from the written claim
   automatically; if present, it must match.
-- Without `--commit`, does not create a thought; `--commit` stages and
-  immediately commits a thought (micro-commit, COG-030) with a message
-  derived from the claim unless `--message` is given, and refuses when the
-  index already holds unrelated staged state or a merge is in progress.
+- Without `--commit`, does not create a thought; `--commit` is an ATOMIC
+  micro-commit (COG-030/COG-035): the mindset is composed from the parent
+  thought directly — the shared index is never touched — and published via
+  the ref old-target check with retry, so parallel agents on one journal
+  are safe by construction. Message defaults from the claim; a fact
+  already active at HEAD returns `already_active` instead of an empty
+  commit; a dirty index still refuses (it must not be invalidated).
+- `--project <name>` (COG-037) sets the `project` qualifier — the
+  shared-journal convention for separating projects.
 - Is idempotent for the same assertion ID.
 - Shows claim and staged assertion IDs on success.
 
@@ -338,7 +343,7 @@ Rules:
   remaining candidate range is reported and the command exits `1`
   (inconclusive), mirroring git-bisect's "could be any of" behavior.
 
-### `cogit recap <from> [<to>]`
+### `cogit recap [<from>] [<to>]`
 
 Belief-state digest for context recovery (COG-031): the thoughts between
 two points plus the net fact changes with decoded claim content, and the
@@ -348,15 +353,20 @@ Rules:
 
 - `<from>` accepts anchors, refs, and thought IDs; `<to>` defaults to
   `HEAD`.
+- With no `<from>` (COG-036), recap starts from the NEWEST anchor, or the
+  root thought when no anchors exist; the result reports `from_anchor`
+  and `same_point` so a resuming agent never guesses.
 - `<from>` must be an ancestor of `<to>`; otherwise the command fails and
   points to `diff`.
 - Output is compact by design — the primary consumer is an agent resuming
   work.
 
-### `cogit facts [<ref-or-thought>]`
+### `cogit facts [<ref-or-thought>] [--subject S] [--predicate P] [--project N]`
 
 Lists the active facts of a thought (default `HEAD`) with decoded claim
-content (COG-028).
+content (COG-028). Filters (COG-036/037) are exact URI matching — subject
+accepts a trailing `*` prefix wildcard, `--project` matches the claim's
+`project` qualifier. Not semantic search (ADR-0002).
 
 Output per fact includes:
 

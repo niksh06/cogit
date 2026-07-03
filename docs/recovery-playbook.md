@@ -208,3 +208,17 @@ Prevention and recovery:
    operator's notes, and `cogit verify` will list dangling thoughts.
 4. Keep `[maintenance] reflogRetainEntries` comfortably larger than your
    longest expected recovery window.
+
+## Stale Index Lock
+
+Symptoms:
+
+- Commands fail with "index: locked by another process" (exit code 4)
+  while no cogit process is running.
+
+Recovery:
+
+1. Confirm nothing cogit-related is alive (`ps` for cogit/mcp_server).
+2. Remove `.cogit/index.json.lock`.
+3. Run `cogit status` and `cogit verify` — the index itself is written
+   atomically, so a crashed holder cannot leave it half-written.
