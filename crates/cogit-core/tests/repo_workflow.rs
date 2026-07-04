@@ -130,6 +130,13 @@ fn contradictory_commit_rejected_then_refute_flow() {
     repo.remove_fact(&a0, "refuted").unwrap();
     let t2 = repo.commit_thought("refute", "agent", Some(&ts(2))).unwrap();
     assert_eq!(repo.mindset_assertions(Some(&t2)).unwrap().len(), 1);
+
+    // COG-040: the surviving row is flagged as a negation
+    let facts = repo.facts(None, None, None, None).unwrap();
+    let rows = facts["facts"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["negation"], json!(true));
+    assert_eq!(rows[0]["negates"], json!(claim_oid));
 }
 
 #[test]

@@ -1313,6 +1313,7 @@ impl Repository {
             "predicate": claim["predicate"],
             "object": claim["object"],
             "negates": claim.get("negates").cloned().unwrap_or(Value::Null),
+            "negation": claim.get("negates").is_some(),
             "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],

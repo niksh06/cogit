@@ -108,6 +108,22 @@ COUNT=$($RUST facts --subject 'interop:*' --json | $PYBIN -c 'import json,sys; p
 [ "$COUNT" = "1" ] || fail "rust subject filter sees $COUNT facts"
 ok
 
+step "negation renders as NOT in both runtimes (COG-040)"
+TS9=2026-07-02T20:00:09Z
+ROW=$($PY facts --subject interop:micro --json)
+CLAIM=$(echo "$ROW" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["claim"])')
+AID=$(echo "$ROW" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["assertion"])')
+$PY add-fact --kind agent_decision --subject interop:micro --predicate landed \
+  --object yes --source agent:interop --confidence 9500 --actor py \
+  --asserted-at $TS9 --negates $CLAIM >/dev/null
+$PY remove-fact $AID --reason refuted >/dev/null
+$PY commit-thought --message "refute interop:micro" --author py --timestamp $TS9 >/dev/null
+$PY facts --subject interop:micro | grep -q "NOT" || fail "python facts lacks NOT"
+$RUST facts --subject interop:micro | grep -q "NOT" || fail "rust facts lacks NOT"
+NEG=$($RUST facts --subject interop:micro --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["negation"])')
+[ "$NEG" = "True" ] || fail "rust negation flag: $NEG"
+ok
+
 step "no-arg recap agrees and reports the anchor"
 $PY anchor interop-done HEAD --timestamp $TS8 >/dev/null
 PYR=$($PY recap --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(d["from_anchor"], d["same_point"])')

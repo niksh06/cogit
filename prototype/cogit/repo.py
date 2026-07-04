@@ -945,6 +945,7 @@ class Repository:
             "predicate": claim["predicate"],
             "object": claim["object"],
             "negates": claim.get("negates"),
+            "negation": claim.get("negates") is not None,
             "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],

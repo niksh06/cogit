@@ -553,8 +553,9 @@ function renderBeliefs() {
     if (SEL && SEL.type === 'fact' && SEL.id === r.assertion) tr.classList.add('sel');
     tr.append(el('td', 'mono', r.subject));
     tr.append(el('td', null, r.predicate));
-    const objTd = el('td', 'obj', String(r.object));
-    objTd.title = String(r.object);
+    const objText = (r.negates ? 'NOT ' : '') + String(r.object);
+    const objTd = el('td', 'obj', objText);
+    objTd.title = objText;
     if (r.negates) objTd.append(el('span', 'chip negs', '⊘ negation'));
     tr.append(objTd);
     const conf = el('td');
@@ -598,7 +599,7 @@ function factLine(aid, cls) {
   if (!r) { d.textContent = short(aid); return d; }
   d.append(el('span', 'mono', r.subject),
     el('span', 'muted', ' ' + r.predicate + ' = '),
-    el('span', null, String(r.object)),
+    el('span', null, (r.negates ? 'NOT ' : '') + String(r.object)),
     el('span', 'muted', ' · ' + pct(r.confidence_bps)));
   d.addEventListener('click', () => select({type: 'fact', id: aid}));
   return d;
@@ -654,8 +655,11 @@ function renderFactDetail(box, title) {
   if (!r) { box.append(el('div', 'muted', 'not found in current state')); return; }
   const line = el('div', 'msg-big');
   line.append(el('span', 'mono', r.subject),
-    el('span', 'muted', '  ' + r.predicate + ' = '), el('span', null, String(r.object)));
+    el('span', 'muted', '  ' + r.predicate + ' = '),
+    el('span', null, (r.negates ? 'NOT ' : '') + String(r.object)));
   box.append(line);
+  if (r.negates) box.append(el('div', 'muted',
+    'This is a negation: it asserts the claim below is FALSE — no replacement value is implied.'));
   kv(box, 'kind', r.kind);
   kv(box, 'status', r.status);
   kv(box, 'confidence', pct(r.confidence_bps) + ' (' + r.confidence_bps + ' bps)');

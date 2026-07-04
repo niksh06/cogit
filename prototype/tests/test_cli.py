@@ -340,5 +340,31 @@ class AcceptanceScenarioTests(CliHarness):
         self.assertEqual(decoded["predicate"], "pure")
 
 
+class NegationRenderingTests(CliHarness):
+    """COG-040: a negation row must be unmistakable in every output."""
+
+    def test_negation_renders_as_not_in_facts_and_recap(self):
+        aid = self.add_fact("flag", obj=True)
+        self.commit("believe", n=1)
+        row = json.loads(self.run_cli("facts", "--json"))["facts"][0]
+        self.assertFalse(row["negation"])
+
+        neg = fact_doc("flag", obj=True, when=ts(2))
+        neg["claim"]["negates"] = row["claim"]
+        self.run_cli("add-fact", json.dumps(neg))
+        self.run_cli("remove-fact", aid, "--reason", "refuted")
+        self.commit("refute", n=3)
+
+        text = self.run_cli("facts")
+        self.assertIn("NOT true", text)
+        self.assertIn("(negates ", text)
+        self.assertNotIn("negates!", text)
+        rows = json.loads(self.run_cli("facts", "--json"))["facts"]
+        self.assertEqual([r["negation"] for r in rows], [True])
+
+        recap_text = self.run_cli("recap")  # root -> HEAD: negation added, original removed
+        self.assertIn("+ agent_decision  test flag NOT true", recap_text)
+
+
 if __name__ == "__main__":
     unittest.main()

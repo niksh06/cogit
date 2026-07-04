@@ -92,7 +92,9 @@ TOOLS = [
         "name": "facts",
         "description": (
             "Active beliefs of a thought (default HEAD) with decoded claim content. Filter with "
-            "subject (exact URI or trailing-* prefix), predicate, project — exact matching, not search."
+            "subject (exact URI or trailing-* prefix), predicate, project — exact matching, not search. "
+            "Rows with negation:true assert the referenced claim is FALSE (object means NOT <object>); "
+            "they do not assert a replacement value."
         ),
         "inputSchema": _schema({
             "ref": REF,

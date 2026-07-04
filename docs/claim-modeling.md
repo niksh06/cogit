@@ -82,7 +82,11 @@ Three different moves — pick deliberately:
   rivals about one claim as a conflict — that is the feature.
 - **Negating claim (`negates: <claim-id>`):** the proposition itself is
   now believed FALSE. Requires removing the original assertion with
-  reason `refuted` (invariant 25); commit enforces this.
+  reason `refuted` (invariant 25); commit enforces this. A negation
+  asserts ONLY that the proposition is false — it does not assert any
+  replacement value (a replacement is a NEW claim). Porcelain renders
+  such rows as `NOT <object>` (COG-040) because readers otherwise
+  mistake them for active belief in the value.
 - **Removal (`remove-fact --reason superseded`):** the fact stopped
   being relevant without being false (config changed, task ended).
 

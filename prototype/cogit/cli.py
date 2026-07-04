@@ -382,16 +382,24 @@ def cmd_blame_fact(args):
     return 0
 
 
+def _render_object(row):
+    """Negations must be unmistakable (COG-040): the row asserts the claim
+    is FALSE, not a belief in the printed value."""
+    obj = json.dumps(row["object"], ensure_ascii=False)
+    if row.get("negates"):
+        return f"NOT {obj} (negates {_short(row['negates'])})"
+    return obj
+
+
 def _print_fact_rows(rows):
     if not rows:
         print("(no active facts)")
         return
     for row in rows:
-        neg = " negates!" if row["negates"] else ""
         print(
             f"{_short(row['assertion'])}  {row['kind']}  "
-            f"{row['subject']} {row['predicate']} {json.dumps(row['object'], ensure_ascii=False)}"
-            f"  conf={row['confidence_bps']} src={row['source']}{neg}"
+            f"{row['subject']} {row['predicate']} {_render_object(row)}"
+            f"  conf={row['confidence_bps']} src={row['source']}"
         )
 
 
@@ -423,10 +431,10 @@ def cmd_recap(args):
     print(f"beliefs: +{len(result['added'])} -{len(result['removed'])}")
     for row in result["added"]:
         print(f"  + {row['kind']}  {row['subject']} {row['predicate']} "
-              f"{json.dumps(row['object'], ensure_ascii=False)}  conf={row['confidence_bps']}")
+              f"{_render_object(row)}  conf={row['confidence_bps']}")
     for row in result["removed"]:
         print(f"  - {row['kind']}  {row['subject']} {row['predicate']} "
-              f"{json.dumps(row['object'], ensure_ascii=False)}")
+              f"{_render_object(row)}")
     merge_note = ", merge in progress" if position["merge_in_progress"] else ""
     print(f"position: {where} at {_short(position['thought'])}{merge_note}")
     return 0

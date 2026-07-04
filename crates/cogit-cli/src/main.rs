@@ -397,23 +397,35 @@ fn build_shorthand_doc(
     }))
 }
 
+/// Negations must be unmistakable (COG-040): the row asserts the claim is
+/// FALSE, not a belief in the printed value.
+fn render_object(row: &Value) -> String {
+    if row["negates"].is_null() {
+        row["object"].to_string()
+    } else {
+        format!(
+            "NOT {} (negates {})",
+            row["object"],
+            short(row["negates"].as_str().unwrap_or(""))
+        )
+    }
+}
+
 fn print_fact_rows(rows: &[Value]) {
     if rows.is_empty() {
         println!("(no active facts)");
         return;
     }
     for row in rows {
-        let neg = if row["negates"].is_null() { "" } else { " negates!" };
         println!(
-            "{}  {}  {} {} {}  conf={} src={}{}",
+            "{}  {}  {} {} {}  conf={} src={}",
             short(row["assertion"].as_str().unwrap_or("")),
             row["kind"].as_str().unwrap_or(""),
             row["subject"].as_str().unwrap_or(""),
             row["predicate"].as_str().unwrap_or(""),
-            row["object"],
+            render_object(row),
             row["confidence_bps"],
-            row["source"].as_str().unwrap_or(""),
-            neg
+            row["source"].as_str().unwrap_or("")
         );
     }
 }
@@ -870,7 +882,7 @@ fn run(cli: Cli) -> Result<i32> {
                     row["kind"].as_str().unwrap(),
                     row["subject"].as_str().unwrap(),
                     row["predicate"].as_str().unwrap(),
-                    row["object"],
+                    render_object(row),
                     row["confidence_bps"]
                 );
             }
@@ -880,7 +892,7 @@ fn run(cli: Cli) -> Result<i32> {
                     row["kind"].as_str().unwrap(),
                     row["subject"].as_str().unwrap(),
                     row["predicate"].as_str().unwrap(),
-                    row["object"]
+                    render_object(row)
                 );
             }
             let merge_note = if position["merge_in_progress"].as_bool().unwrap_or(false) {
