@@ -22,6 +22,23 @@ session with `recap` from your last anchor; record decisions with
 wrong, `blame_fact` it and `bisect_thought` the history. What deserves to
 be a fact — and what does not — is `docs/claim-modeling.md`.
 
+## Web viewer (`web_viewer.py`) — read-only UI (COG-038)
+
+A zero-dependency local web page over one journal: thought DAG across all
+branches, active beliefs with subject/predicate/project filters, per-fact
+introducer (blame), anchors, annotations, and the no-arg recap. Strictly
+read-only — a browser has no honest `actor`, so write operations are out
+of scope by design, not merely missing (same reasoning as ADR-0009).
+
+```sh
+python3 web_viewer.py --repo ~/.cogit-journal/cogit          # http://127.0.0.1:8323/
+python3 web_viewer.py --repo ... --snapshot journal.html     # self-contained snapshot
+```
+
+The live page polls `/api/state` every 3 s; `--snapshot` embeds the same
+JSON into one shareable HTML file. Binds `127.0.0.1` by default and has
+no auth — a non-local `--host` is a deliberate operator decision.
+
 ## Claude Code hook (`claude_code_hook.py`) — passive journaling
 
 Records every tool call of a Claude Code session as a staged

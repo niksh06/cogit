@@ -13,3 +13,7 @@ __pycache__/
 # Local agent/editor settings (not part of the product)
 .claude/settings.local.json
 /target/
+
+# Session tool artifacts (browser MCP, code-graph daemon)
+.playwright-mcp/
+.codegraph/

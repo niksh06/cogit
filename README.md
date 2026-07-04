@@ -31,6 +31,10 @@ Concept with a working reference prototype.
   binary, ADR-0007) with full command parity. Both runtimes reproduce the
   frozen vectors byte-for-byte and can drive ONE repository
   interchangeably — proven by `tools/interop-test.sh`.
+- `prototype/integrations/` — MCP server (agents journal live via tools),
+  Claude Code hook (passive journaling), and a read-only web viewer
+  (thought DAG, beliefs, blame, recap — `web_viewer.py`, COG-038). See
+  `prototype/integrations/README.md`.
 - `user_stories/` — agent-voice backlog (US-001..US-027).
 - `ideas/` — original concept notes.
 - `git/` — a reference copy of the upstream Git source tree used during
@@ -94,7 +98,7 @@ cargo build
 Run the test suites:
 
 ```sh
-cd prototype && python3 -m unittest discover -s tests   # 108 tests
+cd prototype && python3 -m unittest discover -s tests   # 133 tests
 cargo test                                              # core + golden vectors
 sh tools/interop-test.sh                                # Python <-> Rust on one repo
 ```

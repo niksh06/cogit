@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-03T12:00:00+03:00
+updated_datetime: 2026-07-04T19:05:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -45,6 +45,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-036 | facts subject/predicate/project filters; no-arg recap from newest anchor with from_anchor/same_point | `issues/COG-036.md` | `test_concurrency.py::BeliefQueryTests`; rust `micro_commit_noop_and_filters`; interop no-arg recap step |
 | COG-037 | Project qualifier convention for shared journals (--project, MCP arg, cookbook Rule 8) | `issues/COG-037.md` | claim-identity test; interop project-filter step |
 | COG-033 | Multi-process index safety — implemented by COG-035 (lockfile + atomic micro-commit) | `issues/COG-033.md` | superseded; see COG-035 verification |
+| COG-038 | Read-only web viewer: thought DAG, beliefs+filters, blame, recap; live serve + HTML snapshot | `issues/COG-038.md` | `test_web_viewer.py` (11 tests); live browser check on shared journal 2026-07-04 (render, detail panels, snapshot mode, 0 console errors) |
 
 ## Open — next
 
