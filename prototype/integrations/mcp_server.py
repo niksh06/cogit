@@ -112,6 +112,25 @@ TOOLS = [
         "inputSchema": _schema({"from": REF, "to": REF}),
     },
     {
+        "name": "record",
+        "description": (
+            "Batch affordance (COG-044): stage several facts (same shape as add_fact, minus "
+            "commit/message) plus optional removals, then commit them as ONE thought. For the "
+            "main loop only — parallel subagents keep using add_fact(commit=true)."
+        ),
+        "inputSchema": _schema(
+            {
+                "facts": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+                "removals": {"type": "array", "items": _schema(
+                    {"assertion_id": OID, "reason": {"type": "string"}},
+                    required=("assertion_id", "reason"))},
+                "message": {"type": "string"},
+                "author": {"type": "string", "default": "agent"},
+            },
+            required=("facts", "message"),
+        ),
+    },
+    {
         "name": "dump",
         "description": (
             "One-call reader surface (COG-042): active facts (negation-explicit), first "
@@ -228,7 +247,8 @@ class CogitTools:
 
     # -- tools -----------------------------------------------------------------
 
-    def tool_add_fact(self, args):
+    @staticmethod
+    def _build_fact_doc(args):
         source_type, _sep, source_uri = args["source"].partition(":")
         source = {"type": source_type}
         if source_uri:
@@ -247,7 +267,7 @@ class CogitTools:
         if args.get("negates"):
             negates = args["negates"]
             claim["negates"] = negates if negates.startswith("sha256:") else f"sha256:{negates}"
-        doc = {
+        return {
             "claim": claim,
             "assertion": {
                 "type": "assertion",
@@ -259,11 +279,27 @@ class CogitTools:
                 "method": {"type": args.get("method", "mcp")},
             },
         }
+
+    def tool_add_fact(self, args):
+        doc = self._build_fact_doc(args)
         if args.get("commit"):
             # atomic micro-commit: parallel-safe by construction (COG-035)
             return self.repo.micro_commit(doc, message=args.get("message"))
         claim_oid, assertion_oid = self.repo.add_fact(doc)
         return {"claim": claim_oid, "assertion": assertion_oid}
+
+    def tool_record(self, args):
+        removed = []
+        for removal in args.get("removals", []):
+            oid = self.repo.expand_object_id(removal["assertion_id"])
+            self.repo.remove_fact(oid, removal["reason"])
+            removed.append(oid)
+        staged = []
+        for fact in args["facts"]:
+            claim_oid, assertion_oid = self.repo.add_fact(self._build_fact_doc(fact))
+            staged.append({"claim": claim_oid, "assertion": assertion_oid})
+        thought = self.repo.commit_thought(args["message"], args.get("author", "agent"))
+        return {"thought": thought, "facts": staged, "removed": removed}
 
     def tool_remove_fact(self, args):
         oid = self.repo.expand_object_id(args["assertion_id"])

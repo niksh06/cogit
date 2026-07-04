@@ -132,6 +132,26 @@ class McpServerTests(unittest.TestCase):
         is_error, facts = self.client.call_tool("facts")
         self.assertFalse(is_error)
         self.assertEqual(len(facts["facts"]), 2)
+
+        # record: batch facts land as ONE thought (COG-044 affordance)
+        is_error, recorded = self.client.call_tool("record", {
+            "facts": [
+                {"kind": "agent_decision", "subject": "svc:a", "predicate": "owner",
+                 "object": "core", "source": "agent:test", "confidence_bps": 9000,
+                 "project": "demo"},
+                {"kind": "agent_decision", "subject": "svc:b", "predicate": "owner",
+                 "object": "infra", "source": "agent:test", "confidence_bps": 9000,
+                 "project": "demo"},
+            ],
+            "message": "batch: ownership decisions",
+        })
+        self.assertFalse(is_error, recorded)
+        self.assertEqual(len(recorded["facts"]), 2)
+        is_error, log = self.client.call_tool("log", {"limit": 1})
+        self.assertFalse(is_error, log)
+        self.assertEqual(log["thoughts"][0]["message"], "batch: ownership decisions")
+        self.assertEqual(log["thoughts"][0]["id"], recorded["thought"])
+
         is_error, verify = self.client.call_tool("verify")
         self.assertFalse(is_error)
         self.assertTrue(verify["healthy"], verify)

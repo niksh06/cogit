@@ -39,12 +39,16 @@ The live page polls `/api/state` every 3 s; `--snapshot` embeds the same
 JSON into one shareable HTML file. Binds `127.0.0.1` by default and has
 no auth — a non-local `--host` is a deliberate operator decision.
 
-## Claude Code hook (`claude_code_hook.py`) — passive journaling
+## Claude Code hook (`claude_code_hook.py`) — selective capture + re-anchor
 
-Records every tool call of a Claude Code session as a staged
-`tool_observation` fact and commits one thought per assistant turn — an
-automatic reasoning journal with full provenance (`blame-fact` a wrong
-observation back to the exact turn and tool call).
+Default capture is **selective** (COG-044 pilot): only durable events
+become staged beliefs — git commits (`git:<project> head_commit`, the
+previous value is superseded) and test-suite outcomes
+(`test:<project> suite_status = green|red`). One thought per assistant
+turn commits whatever was staged. Set `COGIT_CAPTURE=all` for the old
+firehose mode (every tool call — noisy, COG-012). For batch manual
+journaling from the main loop the MCP server offers `record` (N facts +
+optional removals -> one thought).
 
 A third mode, `session-start` (COG-043), prints a compact belief digest
 (via `dump`) into every new session's context — the agent re-anchors

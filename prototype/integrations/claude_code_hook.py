@@ -60,17 +60,108 @@ def digest(value, limit=200) -> str:
     return text[:limit] if text else "empty"
 
 
-def on_post_tool_use(payload):
-    repo = journal_repo(payload)
+def project_slug(payload):
+    if os.environ.get("COGIT_PROJECT"):
+        return os.environ["COGIT_PROJECT"]
+    cwd = payload.get("cwd") or os.getcwd()
+    return re.sub(r"[^a-z0-9]+", "-", os.path.basename(cwd).lower()).strip("-") or "default"
+
+
+# -- selective event capture (COG-044 pilot, mechanism 1) ------------------------
+
+COMMIT_RE = re.compile(r"\[([\w./-]+)\s+([0-9a-f]{7,40})\]\s+(\S.*)")
+TEST_CMD_RE = re.compile(r"\b(pytest|unittest|cargo test|interop-test)\b")
+TEST_FAIL_RE = re.compile(r"\bFAILED\b|\berror\[|\bfailures=[1-9]|\bpanicked\b|INTEROP FAIL")
+TEST_PASS_RE = re.compile(r"\bOK\b|test result: ok|INTEROP OK|\bpassed\b")
+
+
+def detect_events(payload):
+    """Durable-event beliefs only: git commits and test-suite outcomes.
+    Deterministic, no LLM in the loop — everything else is noise here."""
+    if payload.get("tool_name") != "Bash":
+        return []
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+    raw = payload.get("tool_response", "")
+    response = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False, default=str)
+    events = []
+    if "git commit" in command:
+        # match line-wise: the commit subject must not swallow the stat lines
+        match = next((m for line in response.splitlines()
+                      if (m := COMMIT_RE.search(line))), None)
+        if match:
+            branch, commit, subject = match.groups()
+            events.append({
+                "subject": "git:{}".format(project_slug(payload)),
+                "predicate": "head_commit",
+                "object": f"{commit[:10]}: {subject[:120]}",
+                "qualifiers": {"branch": branch},
+                "uri": f"git-commit:{branch}",
+            })
+    elif TEST_CMD_RE.search(command):
+        failed = TEST_FAIL_RE.search(response)
+        passed = TEST_PASS_RE.search(response)
+        if failed or passed:
+            runner = TEST_CMD_RE.search(command).group(1).replace(" ", "-")
+            events.append({
+                "subject": "test:{}".format(project_slug(payload)),
+                "predicate": "suite_status",
+                "object": "red" if failed else "green",
+                "qualifiers": {"runner": runner},
+                "uri": f"test-run:{runner}",
+            })
+    return events
+
+
+def stage_belief(repo, slug, event):
+    """Stage one event belief; supersede the previous value of the same
+    claim family (same subject/predicate/qualifiers) — current-state
+    semantics per claim-modeling Rule 5."""
+    qualifiers = {**event["qualifiers"], "project": slug}
+    if repo.status()["thought"] is None:
+        rows = []  # empty journal: nothing to supersede yet
+    else:
+        rows = repo.facts(subject=event["subject"], predicate=event["predicate"],
+                          project=slug)["facts"]
+    family = [row for row in rows if row["qualifiers"] == qualifiers]
+    if any(row["object"] == event["object"] for row in family):
+        return False  # already the active belief
+    for row in family:
+        repo.remove_fact(row["assertion"], "superseded")
+    repo.add_fact({
+        "claim": {
+            "type": "claim",
+            "kind": "tool_observation",
+            "subject": event["subject"],
+            "predicate": event["predicate"],
+            "object": event["object"],
+            "qualifiers": qualifiers,
+        },
+        "assertion": {
+            "type": "assertion",
+            "status": "asserted",
+            "source": {"type": "tool", "uri": event["uri"]},
+            "confidence_bps": 9900,
+            "asserted_at": now_utc(),
+            "actor": "claude-code",
+            "method": {"type": "event_capture"},
+        },
+    })
+    return True
+
+
+def capture_everything(repo, payload):
+    """COG-012 firehose mode (COGIT_CAPTURE=all): every tool call."""
     tool = payload.get("tool_name", "unknown-tool")
-    doc = {
+    repo.add_fact({
         "claim": {
             "type": "claim",
             "kind": "tool_observation",
             "subject": f"tool:{tool}",
             "predicate": "returned",
             "object": digest(payload.get("tool_response", "")),
-            "qualifiers": {"input": digest(payload.get("tool_input", ""), 120)},
+            "qualifiers": {"input": digest(payload.get("tool_input", ""), 120),
+                           "project": project_slug(payload)},
         },
         "assertion": {
             "type": "assertion",
@@ -81,8 +172,17 @@ def on_post_tool_use(payload):
             "actor": "claude-code",
             "method": {"type": "tool_result_capture"},
         },
-    }
-    repo.add_fact(doc)
+    })
+
+
+def on_post_tool_use(payload):
+    repo = journal_repo(payload)
+    if os.environ.get("COGIT_CAPTURE", "selective") == "all":
+        capture_everything(repo, payload)
+        return
+    slug = project_slug(payload)
+    for event in detect_events(payload):
+        stage_belief(repo, slug, event)
 
 
 def on_stop(payload):
@@ -91,7 +191,7 @@ def on_stop(payload):
     if not status["staged"] and not status["removed"]:
         return
     repo.commit_thought(
-        f"Turn checkpoint: {len(status['staged'])} tool observation(s)",
+        f"Turn checkpoint: {len(status['staged'])} captured belief(s)",
         "claude-code",
         now_utc(),
     )

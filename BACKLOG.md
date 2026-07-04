@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-04T21:40:00+03:00
+updated_datetime: 2026-07-04T22:10:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -57,7 +57,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-044 | Selective auto-capture — close the coverage gap (mechanism choice needs owner: event-hooks / turn-digest / affordance-only) | P1 | `issues/COG-044.md` |
+| COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 
 ## Open — later (P1/P2 stories, unscoped)
 
