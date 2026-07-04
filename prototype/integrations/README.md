@@ -46,11 +46,20 @@ Records every tool call of a Claude Code session as a staged
 automatic reasoning journal with full provenance (`blame-fact` a wrong
 observation back to the exact turn and tool call).
 
+A third mode, `session-start` (COG-043), prints a compact belief digest
+(via `dump`) into every new session's context — the agent re-anchors
+automatically instead of being told to run `recap`. Set `COGIT_PROJECT`
+to scope the digest in a shared journal.
+
 Enable in `~/.claude/settings.json` (or a project's `.claude/settings.json`):
 
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command",
+        "command": "python3 /ABS/PATH/prototype/integrations/claude_code_hook.py session-start"}]}
+    ],
     "PostToolUse": [
       {"hooks": [{"type": "command",
         "command": "python3 /ABS/PATH/prototype/integrations/claude_code_hook.py post-tool-use"}]}

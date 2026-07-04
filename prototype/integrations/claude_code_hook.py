@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Claude Code -> Cogit bridge (COG-012, integration experiment).
+"""Claude Code -> Cogit bridge (COG-012 passive capture, COG-043 re-anchor).
 
-Two hook events, one script:
+Three hook events, one script:
 
+- SessionStart: prints a compact belief digest (via `dump`) into the new
+  session's context — the agent re-anchors without being asked to.
 - PostToolUse: records the tool call as a staged `tool_observation` fact.
 - Stop: commits the staged facts as one thought per assistant turn.
 
@@ -10,6 +12,8 @@ Wiring (~/.claude/settings.json or project .claude/settings.json):
 
     {
       "hooks": {
+        "SessionStart": [{"hooks": [{"type": "command",
+          "command": "python3 /path/to/prototype/integrations/claude_code_hook.py session-start"}]}],
         "PostToolUse": [{"hooks": [{"type": "command",
           "command": "python3 /path/to/prototype/integrations/claude_code_hook.py post-tool-use"}]}],
         "Stop": [{"hooks": [{"type": "command",
@@ -18,8 +22,9 @@ Wiring (~/.claude/settings.json or project .claude/settings.json):
     }
 
 The journal lives in $COGIT_JOURNAL_DIR (default: ~/.cogit-journal/<project-slug>).
-Hooks must never break the agent session: every failure exits 0 silently
-unless COGIT_HOOK_DEBUG=1.
+Set COGIT_PROJECT to scope the session-start digest to one project of a
+shared journal. Hooks must never break the agent session: every failure
+exits 0 silently unless COGIT_HOOK_DEBUG=1.
 """
 
 import json
@@ -92,6 +97,27 @@ def on_stop(payload):
     )
 
 
+def on_session_start(payload):
+    """Print a compact re-anchor digest; SessionStart stdout lands in the
+    new session's context (COG-043 — coverage starts with cheap resume)."""
+    repo = journal_repo(payload)
+    project = os.environ.get("COGIT_PROJECT")
+    doc = repo.dump(project=project, log_limit=8)
+    recap = doc["recap"]
+    if recap.get("error"):
+        print("cogit: journal is empty — no beliefs recorded yet")
+        return
+    scope = f" (project {project})" if project else ""
+    origin = recap.get("from_anchor") or "root"
+    print(f"cogit re-anchor{scope}: {len(doc['facts'])} active beliefs; "
+          f"since {origin}: {len(recap['thoughts'])} thought(s), "
+          f"+{len(recap['added'])}/-{len(recap['removed'])} beliefs. Recent:")
+    for thought in doc["log"]:
+        print(f"  {thought['timestamp']}  {thought['message']}")
+    print("cogit: call the `dump` MCP tool for the full picture "
+          "(facts + introducers + anchors).")
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "post-tool-use"
     try:
@@ -101,6 +127,8 @@ def main():
     try:
         if mode == "stop":
             on_stop(payload)
+        elif mode == "session-start":
+            on_session_start(payload)
         else:
             on_post_tool_use(payload)
     except CogitError as exc:
