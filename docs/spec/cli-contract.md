@@ -373,7 +373,10 @@ Output per fact includes:
 - short assertion ID (full with `--json`);
 - claim kind, subject, predicate, object;
 - confidence and source type;
-- a marker when the claim negates another claim.
+- negations rendered unmistakably (COG-040): text shows `NOT <object>
+  (negates <id>)`; JSON rows carry `negates` plus derived
+  `negation: true`. A negation asserts the claim is FALSE — no
+  replacement value is implied.
 
 Rules:
 
@@ -385,6 +388,16 @@ Rules:
 
 Prints the thought header (ID, parents, author, date, operation, message)
 followed by its active facts, like `git show`.
+
+### `cogit dump [<ref>] [--project N] [--since <anchor>] [--limit-log K]`
+
+One-call reader surface (COG-042), JSON only: the active fact rows
+(negation-explicit), the first introducer per active assertion
+(blame-fact semantics), anchors, branches, the newest `K` log entries
+(default 50), and a recap block against `--since` (default: the newest
+anchor). Exists because a context-free reader otherwise needs 8-18
+porcelain calls to assemble the same picture; `recap` remains the
+delta-only read.
 
 ### `cogit verify`
 

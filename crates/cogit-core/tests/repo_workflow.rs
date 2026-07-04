@@ -140,6 +140,27 @@ fn contradictory_commit_rejected_then_refute_flow() {
 }
 
 #[test]
+fn dump_one_call_surface() {
+    let (_dir, repo) = make_repo();
+    let (_c1, a1) = repo.add_fact(&fact_doc("alpha", 9000)).unwrap();
+    let t1 = repo.commit_thought("first", "agent", Some(&ts(0))).unwrap();
+    repo.anchor("base", "HEAD", "agent", Some(&ts(1))).unwrap();
+    let (_c2, a2) = repo.add_fact(&fact_doc("beta", 9000)).unwrap();
+    let t2 = repo.commit_thought("second", "agent", Some(&ts(2))).unwrap();
+
+    let doc = repo.dump(None, None, None, 50).unwrap();
+    assert_eq!(doc["thought"], json!(t2));
+    assert_eq!(doc["facts"].as_array().unwrap().len(), 2);
+    assert_eq!(doc["introducer"][a1.as_str()], json!(t1));
+    assert_eq!(doc["introducer"][a2.as_str()], json!(t2));
+    assert_eq!(doc["recap"]["from_anchor"], json!("base"));
+    assert_eq!(doc["log"].as_array().unwrap().len(), 2);
+
+    let limited = repo.dump(None, None, None, 1).unwrap();
+    assert_eq!(limited["log"].as_array().unwrap().len(), 1);
+}
+
+#[test]
 fn parallel_micro_commits_all_land() {
     let dir = tempfile::tempdir().expect("tempdir");
     init_repository(dir.path()).expect("init");

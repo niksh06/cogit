@@ -1317,6 +1317,7 @@ impl Repository {
             "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
+            "source_uri": assertion["source"].get("uri").cloned().unwrap_or(Value::Null),
             "status": assertion["status"],
         }))
     }
@@ -1459,6 +1460,92 @@ impl Repository {
             "conflicts": index["conflicts"],
             "merge_in_progress": !index["merge"].is_null(),
         }))
+    }
+
+    // -- dump (COG-042) ------------------------------------------------------------------
+
+    /// One-call reader surface: active facts, first introducers, anchors,
+    /// branches, bounded log, and a recap block — everything a context-free
+    /// agent needs to re-anchor without porcelain archaeology.
+    pub fn dump(
+        &self,
+        r#ref: Option<&str>,
+        project: Option<&str>,
+        since: Option<&str>,
+        log_limit: usize,
+    ) -> Result<Value> {
+        let status = self.status()?;
+        let mut doc = json!({
+            "position": status,
+            "branches": self.list_branches()?,
+            "anchors": self.list_anchors()?,
+            "thought": Value::Null,
+            "facts": [],
+            "introducer": {},
+            "log": [],
+            "recap": {"error": "empty repository: no thoughts yet"},
+        });
+        if r#ref.is_none() && doc["position"]["thought"].is_null() {
+            return Ok(doc);
+        }
+        let thought_oid = self.resolve(r#ref.unwrap_or("HEAD"))?;
+        doc["thought"] = json!(thought_oid);
+        let facts = self.facts(Some(&thought_oid), None, None, project)?;
+        let rows = facts["facts"].as_array().cloned().unwrap_or_default();
+        let active: BTreeSet<String> = rows
+            .iter()
+            .map(|row| row["assertion"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        doc["facts"] = json!(rows);
+        let thoughts = self.ancestry(&thought_oid)?;
+        let order = self.topo_oldest_first(&thoughts)?;
+        let mut mindsets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for oid in &order {
+            mindsets.insert(oid.clone(), self.mindset_assertions(Some(oid))?);
+        }
+        let mut introducer: BTreeMap<String, String> = BTreeMap::new();
+        for oid in &order {
+            // oldest first == blame-fact's first-introducer rule
+            let parents: Vec<String> = thoughts[oid]["parents"]
+                .as_array()
+                .map(|ps| ps.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default();
+            for aid in mindsets[oid].intersection(&active) {
+                if introducer.contains_key(aid) {
+                    continue;
+                }
+                let in_parent = parents
+                    .iter()
+                    .any(|p| mindsets.get(p).map(|m| m.contains(aid)).unwrap_or(false));
+                if !in_parent {
+                    introducer.insert(aid.clone(), oid.clone());
+                }
+            }
+        }
+        doc["introducer"] = json!(introducer);
+        let log_rows: Vec<Value> = order
+            .iter()
+            .rev()
+            .take(log_limit)
+            .map(|oid| {
+                let thought = &thoughts[oid];
+                json!({
+                    "id": oid,
+                    "parents": thought["parents"],
+                    "message": thought["message"],
+                    "author": thought["author"],
+                    "timestamp": thought["timestamp"],
+                    "operation": thought["operation"],
+                })
+            })
+            .collect();
+        doc["log"] = json!(log_rows);
+        doc["recap"] = match self.recap(since, Some(&thought_oid)) {
+            Ok(recap) => recap,
+            Err(CoreError::User(message)) => json!({"error": message}),
+            Err(err) => return Err(err),
+        };
+        Ok(doc)
     }
 }
 

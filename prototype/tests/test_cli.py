@@ -340,6 +340,35 @@ class AcceptanceScenarioTests(CliHarness):
         self.assertEqual(decoded["predicate"], "pure")
 
 
+class DumpTests(CliHarness):
+    """COG-042: one-call reader surface."""
+
+    def test_dump_one_call_surface(self):
+        a1 = self.add_fact("alpha")
+        t1 = self.commit("first", n=1)
+        self.run_cli("anchor", "base", "HEAD", "--timestamp", ts(2))
+        a2 = self.add_fact("beta", n=3)
+        t2 = self.commit("second", n=4)
+
+        doc = json.loads(self.run_cli("dump"))
+        self.assertEqual(doc["thought"], t2)
+        self.assertEqual({row["assertion"] for row in doc["facts"]}, {a1, a2})
+        self.assertEqual(doc["introducer"][a1], t1)
+        self.assertEqual(doc["introducer"][a2], t2)
+        self.assertEqual(doc["recap"]["from_anchor"], "base")
+        self.assertEqual([t["id"] for t in doc["log"]], [t2, t1])
+        self.assertEqual([a["name"] for a in doc["anchors"]], ["base"])
+
+        limited = json.loads(self.run_cli("dump", "--limit-log", "1"))
+        self.assertEqual(len(limited["log"]), 1)
+
+    def test_dump_empty_repository(self):
+        doc = json.loads(self.run_cli("dump"))
+        self.assertEqual(doc["facts"], [])
+        self.assertEqual(doc["log"], [])
+        self.assertIn("error", doc["recap"])
+
+
 class NegationRenderingTests(CliHarness):
     """COG-040: a negation row must be unmistakable in every output."""
 

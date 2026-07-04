@@ -112,6 +112,20 @@ TOOLS = [
         "inputSchema": _schema({"from": REF, "to": REF}),
     },
     {
+        "name": "dump",
+        "description": (
+            "One-call reader surface (COG-042): active facts (negation-explicit), first "
+            "introducer per assertion, anchors, branches, bounded log, and a recap block. "
+            "THE way to re-anchor in a single call; use recap when only the delta matters."
+        ),
+        "inputSchema": _schema({
+            "ref": REF,
+            "project": {"type": "string", "description": "filter facts by project qualifier"},
+            "since": {**REF, "description": "recap-from anchor/ref (default: newest anchor)"},
+            "limit_log": {"type": "integer", "minimum": 1, "default": 50},
+        }),
+    },
+    {
         "name": "log",
         "description": "Thought history, newest first.",
         "inputSchema": _schema({"ref": REF, "limit": {"type": "integer", "minimum": 1}}),
@@ -271,6 +285,11 @@ class CogitTools:
 
     def tool_recap(self, args):
         return self.repo.recap(args.get("from"), args.get("to"))
+
+    def tool_dump(self, args):
+        return self.repo.dump(args.get("ref"), project=args.get("project"),
+                              since=args.get("since"),
+                              log_limit=args.get("limit_log", 50))
 
     def tool_log(self, args):
         thoughts = self.repo.log(args.get("ref"))

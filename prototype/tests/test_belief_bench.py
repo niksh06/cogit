@@ -51,6 +51,17 @@ class BenchmarkGenerationTests(unittest.TestCase):
         anchors = {a["name"] for a in repo.list_anchors()}
         self.assertEqual(anchors, {"m1", "m2"})
 
+    def test_dump_medium_is_one_call_equivalent(self):
+        with open(os.path.join(self.out, "media", "s01", "dump.json"),
+                  encoding="utf-8") as handle:
+            dump = json.load(handle)
+        self.assertGreater(len(dump["facts"]), 0)
+        # every active fact has a first introducer recorded
+        self.assertEqual({row["assertion"] for row in dump["facts"]},
+                         set(dump["introducer"]))
+        self.assertIn("from_anchor", dump["recap"])
+        self.assertEqual({a["name"] for a in dump["anchors"]}, {"m1", "m2"})
+
     def test_markdown_and_transcript_shapes(self):
         with open(os.path.join(self.out, "media", "s01", "notes.md"),
                   encoding="utf-8") as handle:

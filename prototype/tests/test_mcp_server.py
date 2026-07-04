@@ -74,6 +74,7 @@ class McpServerTests(unittest.TestCase):
         names = {tool["name"] for tool in tools}
         self.assertIn("add_fact", names)
         self.assertIn("recap", names)
+        self.assertIn("dump", names)
         self.assertIn("bisect_thought", names)
         # destructive maintenance is NOT exposed (ADR-0009)
         self.assertNotIn("reflog_expire", names)
@@ -119,6 +120,13 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error, recap)
         self.assertEqual(len(recap["thoughts"]), 1)
         self.assertEqual(recap["added"][0]["predicate"], "passed")
+
+        # dump: the one-call reader surface agrees with the pieces (COG-042)
+        is_error, dump = self.client.call_tool("dump", {})
+        self.assertFalse(is_error, dump)
+        self.assertEqual({row["assertion"] for row in dump["facts"]},
+                         set(dump["introducer"]))
+        self.assertEqual(dump["recap"]["from_anchor"], "m1")
 
         # facts + status + verify
         is_error, facts = self.client.call_tool("facts")

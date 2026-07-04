@@ -208,6 +208,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// one-call reader surface: facts+introducers+anchors+log+recap (JSON only)
+    Dump {
+        r#ref: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long = "limit-log", default_value_t = 50)]
+        limit_log: usize,
+    },
     /// thought header plus its active facts
     Show {
         r#ref: Option<String>,
@@ -906,6 +916,12 @@ fn run(cli: Cli) -> Result<i32> {
                 short(position["thought"].as_str().unwrap_or("null")),
                 merge_note
             );
+            Ok(0)
+        }
+        Cmd::Dump { r#ref, project, since, limit_log } => {
+            let repo = open_repo(&cli.repo)?;
+            let result = repo.dump(r#ref.as_deref(), project.as_deref(), since.as_deref(), limit_log)?;
+            println!("{}", pretty(&result));
             Ok(0)
         }
         Cmd::Facts { r#ref, subject, predicate, project, json } => {

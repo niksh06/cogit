@@ -66,7 +66,7 @@ NOISE = [
     "HTTP GET /metrics -> 200 (4.1 KB)",
 ]
 
-MEDIA = ("journal", "markdown", "transcript")
+MEDIA = ("journal", "markdown", "transcript", "dump")
 
 
 def band(confidence_bps):
@@ -637,7 +637,11 @@ def generate(out_dir, sessions, seed, segments=None):
             "journal": record_journal(events, os.path.join(session_dir, "journal")),
             "markdown": record_markdown(events, os.path.join(session_dir, "notes.md")),
             "transcript": record_transcript(events, os.path.join(session_dir, "transcript.log")),
+            "dump": 0,  # derived one-call read surface over the journal (COG-042)
         }
+        dump_doc = Repository.open(os.path.join(session_dir, "journal")).dump(log_limit=10**6)
+        with open(os.path.join(session_dir, "dump.json"), "w", encoding="utf-8") as handle:
+            json.dump(dump_doc, handle, indent=2)
         with open(os.path.join(session_dir, "probes.json"), "w", encoding="utf-8") as handle:
             json.dump(probes, handle, indent=2)
         truth_dir = os.path.join(out_dir, "truth")
@@ -713,6 +717,7 @@ def grade(out_dir, answers_dir):
         sizes["journal"] += _dir_bytes(os.path.join(session_dir, "journal"))
         sizes["markdown"] += _dir_bytes(os.path.join(session_dir, "notes.md"))
         sizes["transcript"] += _dir_bytes(os.path.join(session_dir, "transcript.log"))
+        sizes["dump"] += _dir_bytes(os.path.join(session_dir, "dump.json"))
         for medium in MEDIA:
             answer_path = os.path.join(answers_dir, f"{sid}-{medium}.json")
             if not os.path.isfile(answer_path):
@@ -726,7 +731,7 @@ def grade(out_dir, answers_dir):
                 bucket.append(score)
 
     results = {"per_class": {}, "overall": {}, "medium_bytes": sizes,
-               "write_ops": {m: sum(s["write_ops"][m] for s in manifest["sessions"])
+               "write_ops": {m: sum(s["write_ops"].get(m, 0) for s in manifest["sessions"])
                              for m in MEDIA},
                "missing_answer_files": missing}
     for medium in MEDIA:

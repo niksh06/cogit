@@ -949,6 +949,7 @@ class Repository:
             "qualifiers": claim["qualifiers"],
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
+            "source_uri": assertion["source"].get("uri"),
             "status": assertion["status"],
         }
 
@@ -1045,3 +1046,51 @@ class Repository:
             "conflicts": index["conflicts"],
             "merge_in_progress": index["merge"] is not None,
         }
+
+    # -- dump (COG-042) ----------------------------------------------------------------
+
+    def dump(self, ref: str = None, project: str = None, since: str = None,
+             log_limit: int = 50):
+        """One-call reader surface: active facts, first introducers, anchors,
+        branches, bounded log, and a recap block — everything a context-free
+        agent needs to re-anchor without porcelain archaeology."""
+        status = self.status()
+        doc = {
+            "position": status,
+            "branches": self.list_branches(),
+            "anchors": self.list_anchors(),
+            "thought": None,
+            "facts": [],
+            "introducer": {},
+            "log": [],
+            "recap": {"error": "empty repository: no thoughts yet"},
+        }
+        if ref is None and status["thought"] is None:
+            return doc
+        thought_oid = self.resolve(ref or "HEAD")
+        doc["thought"] = thought_oid
+        rows = self.facts(thought_oid, project=project)["facts"]
+        doc["facts"] = rows
+        thoughts = self._ancestry(thought_oid)
+        order = self._topo_oldest_first(thoughts)
+        mindsets = {oid: self._mindset_assertions(oid) for oid in order}
+        active = {row["assertion"] for row in rows}
+        introducer = {}
+        for oid in order:  # oldest first == blame-fact's first-introducer rule
+            parents = thoughts[oid]["parents"]
+            for aid in mindsets[oid] & active:
+                if aid in introducer:
+                    continue
+                if all(aid not in mindsets.get(p, set()) for p in parents):
+                    introducer[aid] = oid
+        doc["introducer"] = introducer
+        doc["log"] = [
+            {"id": oid, **{key: thoughts[oid][key]
+                           for key in ("parents", "message", "author", "timestamp", "operation")}}
+            for oid in list(reversed(order))[: max(0, log_limit)]
+        ]
+        try:
+            doc["recap"] = self.recap(since, thought_oid)
+        except UserError as exc:
+            doc["recap"] = {"error": str(exc)}
+        return doc

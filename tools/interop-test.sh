@@ -131,4 +131,10 @@ RSR=$($RUST recap --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); p
 [ "$PYR" = "$RSR" ] || fail "no-arg recap disagrees: $PYR vs $RSR"
 ok
 
+step "dump agrees across runtimes (COG-042)"
+PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
+RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
+[ "$PYD" = "$RSD" ] || fail "dump disagrees: $PYD vs $RSD"
+ok
+
 echo "INTEROP OK: Python and Rust drive one repository interchangeably"
