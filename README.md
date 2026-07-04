@@ -18,9 +18,20 @@ See `docs/adr/0002-provenance-not-retrieval-memory.md` for the boundary, and
 rather than a convention over Git (short version: Git cannot merge or blame
 *propositions*, only lines in files).
 
+![Cogit web viewer: thought DAG with a competing-hypothesis branch, active
+beliefs, and blame for a confirmed root cause](docs/assets/cogit-viewer.png)
+
+*The bundled read-only web viewer on a debugging session: a competing
+hypothesis on its own branch, an anchored milestone, the same root-cause
+claim strengthening from 72% (inference) to 98% (verified), and the exact
+thought that introduced it.*
+
 ## Status
 
-Concept with a working reference prototype.
+Working MVP. The Python reference implementation and a full Rust port
+drive **one repository interchangeably** (`tools/interop-test.sh`); the
+object format is frozen by golden test vectors; agents can use it live
+today through the MCP server.
 
 - `docs/` — PRD, ADRs, specs (object format, repository layout, CLI contract),
   invariants, test strategy, roadmap, threat model, recovery playbook.
@@ -28,18 +39,13 @@ Concept with a working reference prototype.
   CLI contract, with tests and frozen object-format test vectors
   (`docs/adr/0010-python-prototype-slice.md`).
 - `crates/` — the Rust implementation (`cogit-core` library + `cogit-cli`
-  binary, ADR-0007) with full command parity. Both runtimes reproduce the
-  frozen vectors byte-for-byte and can drive ONE repository
-  interchangeably — proven by `tools/interop-test.sh`.
+  binary, ADR-0007) with full command parity; reproduces the frozen
+  vectors byte-for-byte.
 - `prototype/integrations/` — MCP server (agents journal live via tools),
-  Claude Code hook (passive journaling), and a read-only web viewer
-  (thought DAG, beliefs, blame, recap — `web_viewer.py`, COG-038). See
-  `prototype/integrations/README.md`.
+  Claude Code hook (passive journaling), and the read-only web viewer.
+  See `prototype/integrations/README.md`.
 - `user_stories/` — agent-voice backlog (US-001..US-027).
 - `ideas/` — original concept notes.
-- `git/` — a reference copy of the upstream Git source tree used during
-  design. It is not part of the product and should be excluded from any
-  packaging or version control of this repository.
 
 ## Core model
 
@@ -95,6 +101,30 @@ cargo build
 ./target/debug/cogit --repo /tmp/demo status
 ```
 
+## Use it from an agent (MCP)
+
+The intended user is an agent. The MCP server exposes the porcelain as 18
+tools (destructive maintenance excluded by design, ADR-0009):
+
+```sh
+claude mcp add cogit -e COGIT_REPO=$HOME/.cogit-journal/my-project \
+    -- python3 /ABS/PATH/prototype/integrations/mcp_server.py
+```
+
+Suggested loop: start a session with `recap` (no arguments — it resumes
+from your newest anchor), record decisions with `add_fact(commit=true)`
+(atomic micro-commits, safe for parallel agents on one journal), `anchor`
+milestones, and when something turns out wrong, `blame_fact` it back to
+the thought that introduced it. What deserves to be a fact — and what does
+not — is `docs/claim-modeling.md`.
+
+## Watch a journal (web viewer)
+
+```sh
+python3 prototype/integrations/web_viewer.py --repo ~/.cogit-journal/my-project
+# read-only UI at http://127.0.0.1:8323/  (or --snapshot journal.html)
+```
+
 Run the test suites:
 
 ```sh
@@ -119,11 +149,8 @@ sh tools/interop-test.sh                                # Python <-> Rust on one
 
 ## License and contributions
 
-Licensed under the [Apache License 2.0](LICENSE). Contributions are welcome
-once the repository is published: open an issue referencing a `BACKLOG.md`
-ticket (or propose a new one), keep changes within the invariants in
-`docs/invariants.md`, and include tests — the object format may only change
-through an ADR plus regenerated test vectors.
-
-The `git/` reference tree is upstream Git source (GPLv2), kept locally for
-design study only; it is untracked and is not part of the licensed product.
+Licensed under the [Apache License 2.0](LICENSE). Contributions are
+welcome: open an issue referencing a `BACKLOG.md` ticket (or propose a new
+one), keep changes within the invariants in `docs/invariants.md`, and
+include tests — the object format may only change through an ADR plus
+regenerated test vectors.
