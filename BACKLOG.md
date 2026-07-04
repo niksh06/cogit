@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-04T19:05:00+03:00
+updated_datetime: 2026-07-04T21:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -46,12 +46,15 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-037 | Project qualifier convention for shared journals (--project, MCP arg, cookbook Rule 8) | `issues/COG-037.md` | claim-identity test; interop project-filter step |
 | COG-033 | Multi-process index safety — implemented by COG-035 (lockfile + atomic micro-commit) | `issues/COG-033.md` | superseded; see COG-035 verification |
 | COG-038 | Read-only web viewer: thought DAG, beliefs+filters, blame, recap; live serve + HTML snapshot | `issues/COG-038.md` | `test_web_viewer.py` (11 tests); live browser check on shared journal 2026-07-04 (render, detail panels, snapshot mode, 0 console errors) |
+| COG-039 | Belief-recovery benchmark: journal vs markdown vs transcript, 12 context-free readers | `issues/COG-039.md` | `test_belief_bench.py` (6 tests); run seed 20260704: markdown/transcript 1.00, journal 0.975 at ~2.3x reader tokens — solo-scale parity CONFIRMED against the journal; findings report 2026-07-04; spawned COG-040/041 |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-034 | Live MCP session findings (needs owner: register server, run a real session) | P0 (usage phase) | `issues/COG-034.md` |
+| COG-040 | Render negation explicitly in agent-facing output (COG-039 F1: 3 of 4 readers misread refuted beliefs) | P1 | `issues/COG-040.md` |
+| COG-041 | Belief-recovery benchmark at scale — long horizon, reader-budget frontier; kill criterion for the solo pitch | P2 (after COG-040) | `issues/COG-041.md` |
 
 ## Open — later (P1/P2 stories, unscoped)
 
