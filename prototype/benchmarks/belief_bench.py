@@ -170,6 +170,210 @@ def generate_events(rng):
     return events, meta
 
 
+# -- scaled generator (COG-041): long horizon, heavy noise ----------------------
+
+PRED_POOL = [
+    ("timeout_seconds", [15, 30, 45, 60, 90, 120]),
+    ("rate_limit_rps", [50, 100, 200, 400]),
+    ("retries_enabled", [True, False]),
+    ("cache_ttl_seconds", [30, 60, 300, 900]),
+    ("pool_max_connections", [10, 20, 50, 100]),
+    ("owner_team", ["payments-core", "platform", "checkout", "sre"]),
+    ("rollout_strategy", ["canary", "blue-green", "all-at-once"]),
+    ("failing_count", [0, 1, 3, 5, 7]),
+]
+SUBJ_TEMPLATES = ["service:svc-{n}", "api:/endpoint-{n}", "test:suite-{n}",
+                  "deploy:app-{n}", "bug:issue-{n}"]
+
+
+def make_slots(rng, count):
+    slots, seen = [], set()
+    while len(slots) < count:
+        subject = rng.choice(SUBJ_TEMPLATES).format(n=rng.randint(1, 99))
+        predicate, pool = rng.choice(PRED_POOL)
+        if (subject, predicate) in seen:
+            continue
+        seen.add((subject, predicate))
+        slots.append((subject, predicate, pool))
+    return slots
+
+
+def heavy_noise(rng, nbytes):
+    """Realistic transcript filler: a tool line plus a chunky output dump."""
+    lines = [rng.choice(NOISE)]
+    while sum(len(line) + 1 for line in lines) < nbytes:
+        lines.append("    " + "".join(
+            rng.choice("abcdef0123456789 ./:-=") for _ in range(72)))
+    return "\n".join(lines)
+
+
+def generate_events_scaled(rng, segments, noise_bytes=1500):
+    """Long-horizon session: `segments` milestones, revisions reaching deep
+    into history, transcript noise heavy enough to break context-fit."""
+    slots = make_slots(rng, segments * 3 + 6)
+    events, live, i = [], {}, 0
+    history = {}
+    milestone_at = {}      # milestone name -> event index
+    next_slot = 0
+
+    def emit(op, slot_idx=None, value=None, **extra):
+        nonlocal i
+        ev = {"op": op, "i": i}
+        if slot_idx is not None:
+            subject, predicate, _pool = slots[slot_idx]
+            ev.update({"subject": subject, "predicate": predicate, "value": value})
+            history.setdefault(slot_idx, []).append(ev)
+        ev.update(extra)
+        events.append(ev)
+        i += 1
+        return ev
+
+    def new_value(slot_idx, avoid=None):
+        pool = [v for v in slots[slot_idx][2] if v != avoid]
+        return rng.choice(pool)
+
+    def assert_new(count):
+        nonlocal next_slot
+        for _ in range(count):
+            idx = next_slot
+            next_slot += 1
+            value = new_value(idx)
+            emit("assert", idx, value, **make_source(rng))
+            live[idx] = value
+
+    def revise(count, segment_changed=None):
+        candidates = [idx for idx in live if idx < next_slot]
+        rng.shuffle(candidates)
+        for idx in candidates[:count]:
+            if rng.random() < 0.75:
+                value = new_value(idx, avoid=live[idx])
+                emit("supersede", idx, value, **make_source(rng))
+                live[idx] = value
+            else:
+                emit("refute", idx, live[idx], **make_source(rng))
+                live.pop(idx)
+            if segment_changed is not None:
+                segment_changed.append(idx)
+
+    assert_new(6)
+    milestone_at["m01"] = i
+    emit("milestone", name="m01")
+    per_segment_changes = {}
+    for seg in range(2, segments + 1):
+        name = f"m{seg:02d}"
+        changed = []
+        assert_new(3)
+        changed.extend(range(next_slot - 3, next_slot))
+        revise(3, changed)
+        for _ in range(4):
+            emit("noise", line=heavy_noise(rng, noise_bytes))
+        milestone_at[name] = i
+        emit("milestone", name=name)
+        per_segment_changes[name] = changed
+
+    tail_changed = []
+    revise(2, tail_changed)
+    victim = sorted(live)[0]  # guarantee at least one refutation in the run
+    emit("refute", victim, live[victim], **make_source(rng))
+    live.pop(victim)
+    tail_changed.append(victim)
+    emit("noise", line=heavy_noise(rng, noise_bytes))
+
+    meta = {
+        "slots": slots,
+        "live": live,
+        "history": history,
+        "milestones": sorted(milestone_at),
+        "per_segment_changes": per_segment_changes,
+        "changed_after_last": tail_changed,
+    }
+    return events, meta
+
+
+def build_probes_scaled(events, meta, rng):
+    slots = meta["slots"]
+    history = meta["history"]
+    live = meta["live"]
+    probes, truth = [], {}
+
+    def add(cls, question, expected):
+        pid = f"p{len(probes) + 1:02d}"
+        probes.append({"id": pid, "class": cls, "question": question})
+        truth[pid] = {"class": cls, **expected}
+
+    def name(idx):
+        return slots[idx][0], slots[idx][1]
+
+    def current_event(idx):
+        return next(ev for ev in reversed(history[idx]) if ev["op"] != "refute")
+
+    revised = sorted((idx for idx in live if len(history[idx]) > 1),
+                     key=lambda idx: history[idx][0]["i"])
+    stable = [idx for idx in live if len(history[idx]) == 1]
+    refuted = [idx for idx in history if idx not in live
+               and history[idx][-1]["op"] == "refute"]
+
+    for idx in revised[:3]:  # P1 x3, oldest-established first (deep staleness)
+        subject, predicate = name(idx)
+        add("P1", f'What is the CURRENT believed value for "{subject}" "{predicate}"? '
+                  'Answer JSON: {"value": <string|number|boolean>}',
+            {"value": live[idx]})
+    for idx in (revised[3:5] or revised[:2]):  # P2 x2
+        subject, predicate = name(idx)
+        ev = current_event(idx)
+        add("P2", f'Which source introduced the CURRENT belief for "{subject}" '
+                  f'"{predicate}"? Answer JSON: {{"source_type": "...", "source_uri": "..."}}',
+            {"source_type": ev["source_type"], "source_uri": ev["source_uri"]})
+
+    q3 = ('Was the value "{v}" for "{s}" "{p}" ever believed? If yes, what happened '
+          'to that belief? Answer JSON: {{"existed": true|false, "outcome": '
+          '"superseded"|"refuted"|"active"|"never", "replacement": <value or null>}}')
+    # small value pools can cycle back to an old value, which would make the
+    # probe ambiguous — only ask about old values that are NOT current again
+    deep = next((idx for idx in revised
+                 if history[idx][0]["value"] != live.get(idx)), revised[0])
+    subject, predicate = name(deep)
+    old_value = history[deep][0]["value"]
+    add("P3", q3.format(v=old_value, s=subject, p=predicate),
+        {"existed": True, "outcome": "superseded", "replacement": history[deep][1]["value"]})
+    ref = refuted[0]
+    subject, predicate = name(ref)
+    add("P3", q3.format(v=history[ref][-1]["value"], s=subject, p=predicate),
+        {"existed": True, "outcome": "refuted", "replacement": None})
+    nev = stable[0]
+    subject, predicate = name(nev)
+    never_value = next(v for v in slots[nev][2]
+                       if all(v != ev["value"] for ev in history[nev]))
+    add("P3", q3.format(v=never_value, s=subject, p=predicate),
+        {"existed": False, "outcome": "never", "replacement": None})
+
+    last = meta["milestones"][-1]
+    changed = sorted({f"{slots[i][0]} {slots[i][1]}" for i in meta["changed_after_last"]})
+    add("P4", f'Which beliefs changed AFTER milestone "{last}" (asserted, superseded '
+              'or refuted)? List each as "<subject> <predicate>". '
+              'Answer JSON: {"changed": [...]}',
+        {"changed": changed})
+    mid = meta["milestones"][len(meta["milestones"]) // 2]
+    mid_changed = sorted({f"{slots[i][0]} {slots[i][1]}"
+                          for i in meta["per_segment_changes"][mid]})
+    prev = meta["milestones"][meta["milestones"].index(mid) - 1]
+    add("P4", f'Which beliefs changed BETWEEN milestone "{prev}" and milestone '
+              f'"{mid}"? List each as "<subject> <predicate>". '
+              'Answer JSON: {"changed": [...]}',
+        {"changed": mid_changed})
+
+    for idx in (stable[1:] + revised)[:2]:  # P5 x2
+        subject, predicate = name(idx)
+        ev = current_event(idx)
+        add("P5", f'For the CURRENT belief about "{subject}" "{predicate}": '
+                  'confidence band (high >=9000 bps; medium 6000-8999; low <6000) and '
+                  'basis (observation = tool; statement = user or document; inference = '
+                  'agent conclusion)? Answer JSON: {"confidence_band": "...", "basis": "..."}',
+            {"confidence_band": band(ev["confidence"]), "basis": basis(ev["source_type"])})
+
+    return probes, truth
+
+
 # -- ground truth and probes ---------------------------------------------------
 
 
@@ -414,16 +618,20 @@ def record_transcript(events, path):
 # -- generate / grade ------------------------------------------------------------
 
 
-def generate(out_dir, sessions, seed):
+def generate(out_dir, sessions, seed, segments=None):
     os.makedirs(out_dir, exist_ok=True)
-    manifest = {"seed": seed, "sessions": []}
+    manifest = {"seed": seed, "segments": segments, "sessions": []}
     for n in range(1, sessions + 1):
         rng = random.Random(seed + n)
         sid = f"s{n:02d}"
         session_dir = os.path.join(out_dir, "media", sid)
         os.makedirs(os.path.join(session_dir), exist_ok=True)
-        events, meta = generate_events(rng)
-        probes, truth = build_truth_and_probes(events, meta, rng)
+        if segments:
+            events, meta = generate_events_scaled(rng, segments)
+            probes, truth = build_probes_scaled(events, meta, rng)
+        else:
+            events, meta = generate_events(rng)
+            probes, truth = build_truth_and_probes(events, meta, rng)
 
         write_ops = {
             "journal": record_journal(events, os.path.join(session_dir, "journal")),
@@ -543,12 +751,14 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--sessions", type=int, default=4)
     p.add_argument("--seed", type=int, default=20260704)
+    p.add_argument("--segments", type=int, default=None,
+                   help="scaled long-horizon mode (COG-041): number of milestones")
     p = sub.add_parser("grade")
     p.add_argument("--out", required=True)
     p.add_argument("--answers", required=True)
     args = parser.parse_args(argv)
     if args.cmd == "generate":
-        manifest = generate(args.out, args.sessions, args.seed)
+        manifest = generate(args.out, args.sessions, args.seed, segments=args.segments)
         print(json.dumps(manifest, indent=2))
         return 0
     return 0 if grade(args.out, args.answers) else 1

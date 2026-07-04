@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-04T21:30:00+03:00
+updated_datetime: 2026-07-04T23:30:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -48,13 +48,14 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-038 | Read-only web viewer: thought DAG, beliefs+filters, blame, recap; live serve + HTML snapshot | `issues/COG-038.md` | `test_web_viewer.py` (11 tests); live browser check on shared journal 2026-07-04 (render, detail panels, snapshot mode, 0 console errors) |
 | COG-039 | Belief-recovery benchmark: journal vs markdown vs transcript, 12 context-free readers | `issues/COG-039.md` | `test_belief_bench.py` (6 tests); run seed 20260704: markdown/transcript 1.00, journal 0.975 at ~2.3x reader tokens — solo-scale parity CONFIRMED against the journal; findings report 2026-07-04; spawned COG-040/041 |
 | COG-040 | Explicit negation rendering: NOT prefix in facts/show/recap text, negation flag in JSON rows, viewer + MCP + cookbook wording | `issues/COG-040.md` | `test_cli.py::NegationRenderingTests`; rust refute-flow row asserts; interop step 13 green both runtimes |
+| COG-041 | Scale benchmark: synthetic 10x (all media 1.00; journal read-cost +6% vs +59-74%) + REAL history (transcript 10/10 at 48 calls/10min; markdown confabulated; journal 0 fabrications) — H0 fired, trust-differentiator found | `issues/COG-041.md` | findings report 2026-07-04 (`~/Reports/projects/cogit/research/2026-07-04-cog-041-scale-benchmark.md`); harness `--segments` + deep-probe fix, `test_belief_bench.py` scale smoke; spawned COG-042 |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-034 | Live MCP session findings (needs owner: register server, run a real session) | P0 (usage phase) | `issues/COG-034.md` |
-| COG-041 | Belief-recovery benchmark at scale — long horizon, reader-budget frontier; kill criterion for the solo pitch | P2 (after COG-040) | `issues/COG-041.md` |
+| COG-042 | `cogit dump` — one-call reader surface (journal readers burn 10-18 porcelain calls; viewer's /api/state shape as CLI+MCP) | P1 | `issues/COG-042.md` |
 
 ## Open — later (P1/P2 stories, unscoped)
 

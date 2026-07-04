@@ -83,6 +83,20 @@ class BenchmarkGenerationTests(unittest.TestCase):
         for medium in belief_bench.MEDIA:
             self.assertEqual(results["overall"][medium], 1.0)
 
+    def test_scaled_mode_shape(self):
+        with tempfile.TemporaryDirectory(prefix="cogit-bench-scale-") as out:
+            manifest = belief_bench.generate(out, sessions=1, seed=20260705, segments=3)
+            session = manifest["sessions"][0]
+            self.assertEqual(session["probes"], 12)
+            self.assertGreater(session["events"], 30)
+            with open(os.path.join(out, "media", "s01", "probes.json"),
+                      encoding="utf-8") as handle:
+                probes = json.load(handle)
+            self.assertEqual({p["class"] for p in probes}, {"P1", "P2", "P3", "P4", "P5"})
+            repo = Repository.open(os.path.join(out, "media", "s01", "journal"))
+            errors = [f for f in verify_repository(repo) if f["level"] == "error"]
+            self.assertEqual(errors, [])
+
     def test_grader_partial_credit(self):
         expected = {"class": "P4", "changed": ["a b", "c d"]}
         self.assertEqual(
