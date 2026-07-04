@@ -14,6 +14,8 @@ class SecretPatternTests(unittest.TestCase):
         reject_suspected_secrets(text)  # must not raise
 
     def test_known_shapes_rejected(self):
+        # secret-shaped fixtures are assembled at runtime so repository
+        # scanners (e.g. GitHub push protection) never see the literal
         self.assert_rejected("key AKIA" + "ABCDEFGHIJKLMNOP in env")
         self.assert_rejected("-----BEGIN RSA PRIVATE KEY-----")
         self.assert_rejected("token ghp_" + "a1B2" * 10)

@@ -20,22 +20,22 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-008 | Branch/checkout/detach, log, log -g, diff, status, anchors | US-008..US-011, US-015, US-016 | `prototype/tests/test_repo.py`, `test_cli.py` |
 | COG-009 | Conservative claim-level merge with conflicts, resolve, merge thoughts | US-012 | `test_repo.py` merge tests, `test_cli.py::test_merge_conflict_flow` |
 | COG-010 | blame-fact (first introducer), verify (corruption/missing links/dangling), CLI with contract exit codes | US-013, US-014 | `test_repo.py`, `test_cli.py` (65 tests green 2026-07-02) |
-| COG-017 | Repo housekeeping: init product VCS, exclude `git/` reference tree | `issues/COG-017.md` | initial commit `7f1a02b`; tree clean, `git/`/`.venv` untracked, 59 files, 2026-07-02 |
+| COG-017 | Repo housekeeping: init product VCS, exclude `git/` reference tree | `issues/COG-017.md` | initial commit `90e8133`; tree clean, `git/`/`.venv` untracked, 59 files, 2026-07-02 |
 | COG-011 | "Why not plain Git?" positioning ADR | ADR-0011 | doc review; README links it |
 | COG-014 | Atomic symbolic-HEAD updates (old-content check on HEAD writes) | `issues/COG-014.md` | `test_refs.py` HEAD race/lock tests (exit 4), spec updated |
 | COG-015 | Negation-aware merge and commit checks (invariants 24–25) | `issues/COG-015.md` | `test_repo.py` negation tests; verify warns `contradictory-mindset` |
 | COG-012 | Integration experiment: Claude Code hook + CLI dogfood session | `issues/COG-012.md` | hook smoke-tested (incl. secret rejection); findings report 2026-07-02; spawned COG-027/028, re-prioritized COG-025 |
-| COG-016 | License: Apache-2.0 adopted, OQ-004 closed as CQ-014 | `issues/COG-016.md` | commit `8affe40`; owner decision 2026-07-02 |
-| COG-027 | Shorthand fact input for `add-fact` (incl. `--negates`) | `issues/COG-027.md` | commit `efc37cc`; parity test: shorthand == JSON object IDs |
-| COG-028 | `cogit facts` / `cogit show` porcelain | `issues/COG-028.md` | commit `3ecc4e1`; `test_cli.py::test_facts_and_show` |
-| COG-025 | Abbreviated object-id prefixes + `--json` on all porcelain commands | CLI contract | commit `939266b`; 77 tests green 2026-07-02 |
-| COG-019 | `log --introduced-fact` / `--removed-fact` event queries | `issues/COG-019.md` | commit `744d5a7`; re-introduction test in `test_cli.py` |
-| COG-021 | `bisect-thought` with oracle contract (closed OQ-009 as CQ-015) | `issues/COG-021.md` | commit `2ba4397`; `test_bisect.py` incl. skip range + real-oracle CLI run |
+| COG-016 | License: Apache-2.0 adopted, OQ-004 closed as CQ-014 | `issues/COG-016.md` | commit `859e541`; owner decision 2026-07-02 |
+| COG-027 | Shorthand fact input for `add-fact` (incl. `--negates`) | `issues/COG-027.md` | commit `77543d7`; parity test: shorthand == JSON object IDs |
+| COG-028 | `cogit facts` / `cogit show` porcelain | `issues/COG-028.md` | commit `c8846fb`; `test_cli.py::test_facts_and_show` |
+| COG-025 | Abbreviated object-id prefixes + `--json` on all porcelain commands | CLI contract | commit `188b9f5`; 77 tests green 2026-07-02 |
+| COG-019 | `log --introduced-fact` / `--removed-fact` event queries | `issues/COG-019.md` | commit `cf7f83a`; re-introduction test in `test_cli.py` |
+| COG-021 | `bisect-thought` with oracle contract (closed OQ-009 as CQ-015) | `issues/COG-021.md` | commit `9524e7c`; `test_bisect.py` incl. skip range + real-oracle CLI run |
 | COG-022 | `count-objects` pressure metrics with `[maintenance]` thresholds | `issues/COG-022.md` | `test_maintenance.py`; 86 tests green 2026-07-02; `gc --auto` deferred until compaction exists |
 | COG-018 | Annotations: `annotation` object type, typed namespaces, annotate/annotations, `log --annotations` (ADR-0012; closed OQ-007 as CQ-016) | `issues/COG-018.md` | annotation tests in `test_repo.py`/`test_cli.py`; vectors +1 additive (5 frozen intact); 91 tests green 2026-07-02 |
 | COG-020 | Rerere: orientation-invariant conflict fingerprints, remembered resolutions, `resolve --suggested`, `cogit rerere` (closed OQ-008 as CQ-017) | `issues/COG-020.md` | `test_rerere.py` (record/suggest/apply/forget, drop memory); 97 tests green 2026-07-02; roadmap Phase 4 DONE |
-| COG-023 | Secret detection v2: entropy heuristic + URL/AWS shapes, false-positive guards (OQ-013 narrowed) | commit `2fb961b` | `test_secrets.py`: object ids/identifiers pass, tokens/URL-creds rejected |
-| COG-024 | Reflog retention: explicit `reflog-expire` with dry-run and config default (closed OQ-010 as CQ-018) | commit `283ee6c` | `test_refs.py::test_reflog_expire`; recovery playbook updated |
+| COG-023 | Secret detection v2: entropy heuristic + URL/AWS shapes, false-positive guards (OQ-013 narrowed) | commit `f72d0c3` | `test_secrets.py`: object ids/identifiers pass, tokens/URL-creds rejected |
+| COG-024 | Reflog retention: explicit `reflog-expire` with dry-run and config default (closed OQ-010 as CQ-018) | commit `7bede04` | `test_refs.py::test_reflog_expire`; recovery playbook updated |
 | COG-030 | `add-fact --commit` micro-commit + stdin input (model-review finding) | `issues/COG-030.md` | `test_cli.py`: micro-flow, dirty-index refusal, stdin id parity |
 | COG-031 | `cogit recap` belief-state digest for context recovery (model-review finding) | `issues/COG-031.md` | `test_cli.py::test_recap`; 108 tests green 2026-07-02 |
 | COG-013 | Rust port: `cogit-core` + `cogit-cli`, full command parity, golden vectors byte-for-byte | `issues/COG-013.md`, ADR-0007 | `cargo test` (12 tests, clippy clean); `tools/interop-test.sh`: Python↔Rust drive one repository interchangeably (ids, conflicts, rerere fingerprints, annotations, metrics all agree) |
