@@ -370,7 +370,7 @@ const fmtTs = t => t ? t.replace('T', ' ').replace('Z', '').replace('+00:00', ''
 const pct = bps => (bps / 100).toFixed(0) + '%';
 const distinct = a => [...new Set(a)];
 
-let STATE = null, SIG = '', SEL = null;
+let STATE = null, SIG = '', SEL = null, URL_PROJECT_APPLIED = false;
 
 function setLive(ok) {
   const e = $('#live');
@@ -521,6 +521,13 @@ function populateFilters() {
   fillSelect($('#f-project'),
     distinct(STATE.head_facts.map(r => (r.qualifiers || {}).project).filter(Boolean)), 'project');
   fillSelect($('#f-kind'), distinct(STATE.head_facts.map(r => r.kind)), 'kind');
+  if (!URL_PROJECT_APPLIED) {
+    // bookmarkable per-project views: /?project=<slug> preselects the filter
+    const want = new URLSearchParams(location.search).get('project');
+    const sel = $('#f-project');
+    if (want && [...sel.options].some(o => o.value === want)) sel.value = want;
+    URL_PROJECT_APPLIED = true;
+  }
 }
 
 function fillSelect(sel, values, label) {

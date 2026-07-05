@@ -1,0 +1,16 @@
+# Persistent cogit journal viewer:  cd deploy && docker compose up -d --build
+# Journal override:                  COGIT_JOURNAL=/path/to/journal docker compose up -d
+services:
+  cogit-viewer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: cogit-viewer
+    ports:
+      - "127.0.0.1:8323:8323"  # localhost-only on the host: the viewer has no auth
+    volumes:
+      # :ro turns the viewer's read-only-by-construction guarantee into a
+      # filesystem-level one — the container cannot touch the journal
+      - "${COGIT_JOURNAL:-${HOME}/.cogit-journal/cogit}:/journal:ro"
+    read_only: true
+    restart: unless-stopped

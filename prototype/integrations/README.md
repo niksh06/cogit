@@ -38,6 +38,19 @@ python3 web_viewer.py --repo ... --snapshot journal.html     # self-contained sn
 The live page polls `/api/state` every 3 s; `--snapshot` embeds the same
 JSON into one shareable HTML file. Binds `127.0.0.1` by default and has
 no auth — a non-local `--host` is a deliberate operator decision.
+`/?project=<slug>` preselects the project filter (bookmarkable
+per-project views of a shared journal).
+
+Persistent deployment (COG-051) — a container that survives reboots:
+
+```sh
+cd deploy && docker compose up -d --build     # http://127.0.0.1:8323/
+```
+
+The journal is mounted `:ro` (the read-only guarantee becomes a
+filesystem-level one), the container root fs is read-only, and the port
+is published to `127.0.0.1` only. Override the journal path with
+`COGIT_JOURNAL=/path docker compose up -d`.
 
 ## Claude Code hook (`claude_code_hook.py`) — selective capture + re-anchor
 
