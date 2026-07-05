@@ -107,8 +107,17 @@ def _validate_assertion(obj):
     _check_keys(
         obj,
         ("type", "claim", "status", "source", "confidence_bps", "asserted_at", "actor", "method"),
+        optional=("premises",),
         where="assertion",
     )
+    if "premises" in obj:
+        premises = obj["premises"]
+        if not isinstance(premises, list) or not premises:
+            raise UserError("assertion: premises must be a non-empty array of assertion ids")
+        for premise in premises:
+            _check_oid(premise, "premises[]")
+        if premises != sorted(set(premises)):
+            raise UserError("assertion: premises must be sorted and unique")
     _check_oid(_require(obj, "claim"), "claim")
     if _require(obj, "status") not in ASSERTION_STATUSES:
         raise UserError(f"assertion: status must be one of {ASSERTION_STATUSES}")

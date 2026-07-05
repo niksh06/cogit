@@ -131,6 +131,12 @@ def cmd_add_fact(args):
     if args.project and isinstance(doc, dict) and isinstance(doc.get("claim"), dict):
         doc["claim"].setdefault("qualifiers", {}).setdefault("project", args.project)
 
+    if args.premises:
+        if not (isinstance(doc, dict) and isinstance(doc.get("assertion"), dict)):
+            raise UserError("add-fact: --premise requires an assertion document")
+        doc["assertion"]["premises"] = sorted(
+            {repo.expand_object_id(p) for p in args.premises})
+
     if args.commit:
         # atomic micro-commit: bypasses the shared index entirely (COG-035)
         result = repo.micro_commit(doc, message=args.message, author=args.author, timestamp=args.timestamp)
@@ -644,6 +650,8 @@ def build_parser():
     p.add_argument("--object-json", help="shorthand: claim object as JSON (bool/int/string)")
     p.add_argument("--qualifier", action="append", metavar="K=V", help="shorthand: claim qualifier (repeatable)")
     p.add_argument("--negates", help="shorthand: claim id this claim negates")
+    p.add_argument("--premise", action="append", dest="premises",
+                   help="assertion id this belief derives from (repeatable, ADR-0013)")
     p.add_argument("--source", help="shorthand: source as type[:uri], e.g. agent:session-x")
     p.add_argument("--confidence", type=int, help="shorthand: confidence in basis points (0-10000)")
     p.add_argument("--actor", default="agent", help="shorthand: asserting actor")

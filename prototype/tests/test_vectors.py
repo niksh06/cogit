@@ -21,7 +21,8 @@ class VectorTests(unittest.TestCase):
     def test_all_types_present(self):
         self.assertEqual(
             [v["type"] for v in self.vectors],
-            ["claim", "assertion", "mindset", "thought", "anchor", "annotation"],
+            # the trailing assertion is the additive premises vector (ADR-0013)
+            ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion"],
         )
 
     def test_vectors_reproduce(self):
@@ -35,8 +36,14 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(zlib.decompress(zlib.compress(preimage)), preimage)
 
     def test_chain_references_are_consistent(self):
-        by_type = {v["type"]: v for v in self.vectors}
+        by_type = {}
+        for vector in self.vectors:
+            by_type.setdefault(vector["type"], vector)  # first occurrence wins
         self.assertEqual(by_type["assertion"]["object"]["claim"], by_type["claim"]["object_id"])
+        premises_vector = self.vectors[-1]
+        self.assertEqual(premises_vector["object"]["premises"],
+                         [by_type["assertion"]["object_id"]])
+        self.assertEqual(premises_vector["object"]["claim"], by_type["claim"]["object_id"])
         self.assertEqual(by_type["mindset"]["object"]["assertions"], [by_type["assertion"]["object_id"]])
         self.assertEqual(by_type["thought"]["object"]["mindset"], by_type["mindset"]["object_id"])
         self.assertEqual(by_type["anchor"]["object"]["target"], by_type["thought"]["object_id"])

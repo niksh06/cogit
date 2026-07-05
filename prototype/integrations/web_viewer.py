@@ -673,6 +673,10 @@ function renderFactDetail(box, title) {
     kv(box, 'negates', neg
       ? neg.subject + ' ' + neg.predicate + ' = ' + String(neg.object) : r.negates, !neg);
   }
+  if ((r.premises || []).length) {
+    box.append(el('h3', null, 'Premises (derived from)'));
+    r.premises.forEach(pid => box.append(factLine(pid)));
+  }
   const tid = STATE.introducer[r.assertion];
   if (tid) {
     box.append(el('h3', null, 'Introduced by'));

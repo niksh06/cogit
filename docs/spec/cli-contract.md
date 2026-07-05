@@ -86,8 +86,14 @@ cogit add-fact --kind agent_decision --subject cogit:mvp \
   --predicate first_slice --object object_store \
   --source manual:design-session --confidence 9500 \
   [--qualifier k=v ...] [--negates <claim-id>] [--object-json <json>] \
-  [--actor agent] [--method cli] [--asserted-at <iso-utc>]
+  [--actor agent] [--method cli] [--asserted-at <iso-utc>] \
+  [--premise <assertion-id> ...]
 ```
+
+`--premise` (repeatable, ADR-0013) records the assertions this belief
+derives from; IDs accept unique prefixes and are expanded, sorted and
+deduplicated. Every premise must reference an existing assertion. Fact
+rows (`facts`, `show`, `dump`) expose the resulting `premises` list.
 
 Rules:
 

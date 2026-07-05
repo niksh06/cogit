@@ -207,6 +207,10 @@ class Repository:
                 raise UserError("add-fact: assertion.claim must reference an existing claim")
             self._read_typed(claim_oid, "claim")
         assertion.setdefault("type", "assertion")
+        for premise in assertion.get("premises", ()):
+            # ADR-0013: premises must reference existing assertions; the
+            # derivation graph is a DAG by construction (content addressing)
+            self._read_typed(premise, "assertion")
         assertion_oid = self.store.write(assertion)
         return claim_oid, assertion_oid, assertion
 
@@ -950,6 +954,7 @@ class Repository:
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri"),
+            "premises": assertion.get("premises", []),
             "status": assertion["status"],
         }
 

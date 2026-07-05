@@ -62,6 +62,9 @@ enum Cmd {
         qualifiers: Vec<String>,
         #[arg(long)]
         negates: Option<String>,
+        /// assertion id this belief derives from (repeatable, ADR-0013)
+        #[arg(long = "premise")]
+        premises: Vec<String>,
         #[arg(long)]
         source: Option<String>,
         #[arg(long)]
@@ -485,7 +488,8 @@ fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::AddFact {
             fact, kind, subject, predicate, object_value, object_json, qualifiers, negates,
-            source, confidence, actor, method, asserted_at, project, commit, message, author, timestamp, json,
+            premises, source, confidence, actor, method, asserted_at, project, commit, message,
+            author, timestamp, json,
         } => {
             let repo = open_repo(&cli.repo)?;
             if fact.is_some() && kind.is_some() {
@@ -519,6 +523,21 @@ fn run(cli: Cli) -> Result<i32> {
                         quals.entry("project".to_owned()).or_insert_with(|| json!(project));
                     }
                 }
+            }
+            if !premises.is_empty() {
+                let assertion = doc
+                    .get_mut("assertion")
+                    .and_then(Value::as_object_mut)
+                    .ok_or_else(|| {
+                        CoreError::User("add-fact: --premise requires an assertion document".into())
+                    })?;
+                let mut expanded: Vec<String> = premises
+                    .iter()
+                    .map(|p| repo.expand_object_id(p))
+                    .collect::<Result<_>>()?;
+                expanded.sort_unstable();
+                expanded.dedup();
+                assertion.insert("premises".to_owned(), json!(expanded));
             }
             if commit {
                 // atomic micro-commit: bypasses the shared index (COG-035)

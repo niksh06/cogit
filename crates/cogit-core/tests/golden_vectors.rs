@@ -23,7 +23,8 @@ fn all_types_present() {
         .collect();
     assert_eq!(
         types,
-        ["claim", "assertion", "mindset", "thought", "anchor", "annotation"]
+        // the trailing assertion is the additive premises vector (ADR-0013)
+        ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion"]
     );
 }
 

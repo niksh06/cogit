@@ -154,6 +154,37 @@ fn secret_guard_allows_paths_rejects_tokens() {
 }
 
 #[test]
+fn premises_validate_and_round_trip() {
+    let (_dir, repo) = make_repo();
+    let (claim_oid, evidence) = repo.add_fact(&fact_doc("evidence", 9900)).unwrap();
+    repo.commit_thought("evidence", "agent", Some(&ts(0))).unwrap();
+
+    let mut derived = fact_doc("conclusion", 8200);
+    derived["assertion"]["premises"] = json!([evidence.clone()]);
+    let (_c, derived_aid) = repo.add_fact(&derived).unwrap();
+    repo.commit_thought("derived", "agent", Some(&ts(1))).unwrap();
+    let facts = repo.facts(None, None, None, None).unwrap();
+    let row = facts["facts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["assertion"] == json!(derived_aid))
+        .cloned()
+        .unwrap();
+    assert_eq!(row["premises"], json!([evidence]));
+
+    // a claim id is not an assertion (ADR-0013 write-time check)
+    let mut bad = fact_doc("bad", 8000);
+    bad["assertion"]["premises"] = json!([claim_oid]);
+    assert!(matches!(repo.add_fact(&bad), Err(CoreError::User(_))));
+
+    // shape rules reject non-oid premises
+    let mut shape = fact_doc("shape", 8000);
+    shape["assertion"]["premises"] = json!(["not-an-oid"]);
+    assert!(matches!(repo.add_fact(&shape), Err(CoreError::User(_))));
+}
+
+#[test]
 fn dump_one_call_surface() {
     let (_dir, repo) = make_repo();
     let (_c1, a1) = repo.add_fact(&fact_doc("alpha", 9000)).unwrap();

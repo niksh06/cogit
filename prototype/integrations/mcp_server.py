@@ -59,6 +59,8 @@ TOOLS = [
                 "qualifiers": {"type": "object"},
                 "project": {"type": "string", "description": "shared-journal convention: project qualifier"},
                 "negates": {**OID, "description": "claim id this claim negates"},
+                "premises": {"type": "array", "items": OID,
+                             "description": "assertion ids this belief derives from (ADR-0013)"},
                 "source": {"type": "string", "description": "type[:uri], e.g. agent:session-x"},
                 "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
                 "actor": {"type": "string", "default": "agent"},
@@ -265,8 +267,7 @@ class CogitTools:
 
     # -- tools -----------------------------------------------------------------
 
-    @staticmethod
-    def _build_fact_doc(args):
+    def _build_fact_doc(self, args):
         source_type, _sep, source_uri = args["source"].partition(":")
         source = {"type": source_type}
         if source_uri:
@@ -285,18 +286,19 @@ class CogitTools:
         if args.get("negates"):
             negates = args["negates"]
             claim["negates"] = negates if negates.startswith("sha256:") else f"sha256:{negates}"
-        return {
-            "claim": claim,
-            "assertion": {
-                "type": "assertion",
-                "status": "asserted",
-                "source": source,
-                "confidence_bps": args["confidence_bps"],
-                "asserted_at": _now(),
-                "actor": args.get("actor", "agent"),
-                "method": {"type": args.get("method", "mcp")},
-            },
+        assertion = {
+            "type": "assertion",
+            "status": "asserted",
+            "source": source,
+            "confidence_bps": args["confidence_bps"],
+            "asserted_at": _now(),
+            "actor": args.get("actor", "agent"),
+            "method": {"type": args.get("method", "mcp")},
         }
+        if args.get("premises"):
+            assertion["premises"] = sorted(
+                {self.repo.expand_object_id(p) for p in args["premises"]})
+        return {"claim": claim, "assertion": assertion}
 
     def tool_add_fact(self, args):
         doc = self._build_fact_doc(args)

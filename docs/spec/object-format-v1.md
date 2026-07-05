@@ -115,6 +115,15 @@ Required fields:
 }
 ```
 
+Optional fields:
+
+- `premises`: a non-empty, sorted, deduplicated array of assertion IDs
+  this belief derives from (ADR-0013). Absent means "no recorded
+  premises"; every referenced assertion must already exist at write
+  time, which makes the derivation graph acyclic by construction.
+  Premises are part of the identity preimage: the same claim derived
+  from different evidence is a different assertion.
+
 Rules:
 
 - `type` must be `assertion`.
@@ -125,6 +134,7 @@ Rules:
 - `asserted_at` is required.
 - `actor` is a non-empty string in MVP.
 - `method` is an object.
+- `premises`, when present, follows the optional-field rules above.
 
 ### Mindset
 

@@ -93,6 +93,30 @@
       "canonical_json": "{\"author\":\"reviewer\",\"body\":\"Reviewed: canonical example annotation.\",\"created_at\":\"2026-07-02T10:00:00Z\",\"namespace\":\"notes\",\"parents\":[],\"target\":\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\",\"type\":\"annotation\"}",
       "preimage": "annotation 242\u0000{\"author\":\"reviewer\",\"body\":\"Reviewed: canonical example annotation.\",\"created_at\":\"2026-07-02T10:00:00Z\",\"namespace\":\"notes\",\"parents\":[],\"target\":\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\",\"type\":\"annotation\"}",
       "object_id": "sha256:8eb11e680375312a353c5600e8f589a34b3c255f749a2051e7ae55cf37c0c60e"
+    },
+    {
+      "type": "assertion",
+      "object": {
+        "type": "assertion",
+        "claim": "sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61",
+        "status": "asserted",
+        "source": {
+          "type": "agent",
+          "uri": "session:derivation"
+        },
+        "confidence_bps": 8200,
+        "asserted_at": "2026-07-05T12:00:00Z",
+        "actor": "agent",
+        "method": {
+          "type": "inference"
+        },
+        "premises": [
+          "sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf"
+        ]
+      },
+      "canonical_json": "{\"actor\":\"agent\",\"asserted_at\":\"2026-07-05T12:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":8200,\"method\":{\"type\":\"inference\"},\"premises\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"source\":{\"type\":\"agent\",\"uri\":\"session:derivation\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
+      "preimage": "assertion 367\u0000{\"actor\":\"agent\",\"asserted_at\":\"2026-07-05T12:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":8200,\"method\":{\"type\":\"inference\"},\"premises\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"source\":{\"type\":\"agent\",\"uri\":\"session:derivation\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
+      "object_id": "sha256:5b0af471b681e6d6a316ccce248fdc5c6cc09ff1fd169533b4db1223f997b34e"
     }
   ]
 }

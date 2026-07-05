@@ -282,6 +282,14 @@ impl Repository {
             }
         };
         assertion.entry("type".to_owned()).or_insert(json!("assertion"));
+        if let Some(premises) = assertion.get("premises").and_then(Value::as_array) {
+            // ADR-0013: premises must reference existing assertions; the
+            // derivation graph is a DAG by construction (content addressing)
+            for premise in premises.clone() {
+                let oid = premise.as_str().unwrap_or_default().to_owned();
+                self.read_typed(&oid, "assertion")?;
+            }
+        }
         let assertion_value = Value::Object(assertion);
         let assertion_oid = self.store.write(&assertion_value)?;
         Ok((claim_oid, assertion_oid, assertion_value))
@@ -1318,6 +1326,7 @@ impl Repository {
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri").cloned().unwrap_or(Value::Null),
+            "premises": assertion.get("premises").cloned().unwrap_or_else(|| json!([])),
             "status": assertion["status"],
         }))
     }

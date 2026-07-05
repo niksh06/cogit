@@ -131,6 +131,15 @@ RSR=$($RUST recap --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); p
 [ "$PYR" = "$RSR" ] || fail "no-arg recap disagrees: $PYR vs $RSR"
 ok
 
+step "premises round-trip across runtimes (COG-049)"
+BASE=$($PY facts --subject interop:micro --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["assertion"])')
+$RUST add-fact --kind agent_decision --subject interop:derived --predicate conclusion \
+  --object yes --source agent:interop --confidence 8200 --actor rs \
+  --asserted-at $TS9 --project interop --premise $BASE --commit --timestamp $TS9 >/dev/null
+PREM=$($PY facts --subject interop:derived --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["premises"][0])')
+[ "$PREM" = "$BASE" ] || fail "premises did not round-trip: $PREM vs $BASE"
+ok
+
 step "dump agrees across runtimes (COG-042)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')

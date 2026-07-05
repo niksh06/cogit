@@ -35,6 +35,7 @@ These invariants are the safety rails for Cogit implementation. If a feature vio
 23. Prune is not part of MVP.
 24. A negated claim must explicitly link to the claim it negates.
 25. Activating a negated claim requires removing the original active assertion with reason `refuted`.
+26. Assertion premises reference existing assertions only; the derivation graph is acyclic by construction (ADR-0013).
 
 ## Mutation Invariants
 

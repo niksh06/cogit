@@ -168,9 +168,15 @@ fn validate_assertion(map: &Map<String, Value>) -> Result<()> {
     check_keys(
         map,
         &["type", "claim", "status", "source", "confidence_bps", "asserted_at", "actor", "method"],
-        &[],
+        &["premises"],
         "assertion",
     )?;
+    if map.contains_key("premises") {
+        let premises = get_oid_list(map, "premises", true, "assertion")?;
+        if premises.is_empty() {
+            return user_err("assertion: premises must be a non-empty array of assertion ids");
+        }
+    }
     get_oid(map, "claim", "assertion")?;
     let status = get_str(map, "status", "assertion")?;
     if !ASSERTION_STATUSES.contains(&status) {
