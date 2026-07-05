@@ -103,7 +103,7 @@ cargo build
 
 ## Use it from an agent (MCP)
 
-The intended user is an agent. The MCP server exposes the porcelain as 20
+The intended user is an agent. The MCP server exposes the porcelain as 21
 tools (destructive maintenance excluded by design, ADR-0009):
 
 ```sh

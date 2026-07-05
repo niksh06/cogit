@@ -112,6 +112,15 @@ TOOLS = [
         "inputSchema": _schema({"from": REF, "to": REF}),
     },
     {
+        "name": "analytics",
+        "description": (
+            "Belief analytics (COG-045): calibration per confidence band and source type "
+            "(open/superseded/refuted/retired, survival = open/(open+refuted)) plus claim "
+            "families ranked by revision churn. Outcomes inferred structurally from history."
+        ),
+        "inputSchema": _schema({"ref": REF, "top": {"type": "integer", "minimum": 1, "default": 20}}),
+    },
+    {
         "name": "record",
         "description": (
             "Batch affordance (COG-044): stage several facts (same shape as add_fact, minus "
@@ -321,6 +330,10 @@ class CogitTools:
 
     def tool_recap(self, args):
         return self.repo.recap(args.get("from"), args.get("to"))
+
+    def tool_analytics(self, args):
+        from analytics import analyze  # lazy: script-dir import
+        return analyze(self.repo, args.get("ref"), top=args.get("top", 20))
 
     def tool_dump(self, args):
         return self.repo.dump(args.get("ref"), project=args.get("project"),

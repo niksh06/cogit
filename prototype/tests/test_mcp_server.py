@@ -75,6 +75,7 @@ class McpServerTests(unittest.TestCase):
         self.assertIn("add_fact", names)
         self.assertIn("recap", names)
         self.assertIn("dump", names)
+        self.assertIn("analytics", names)
         self.assertIn("bisect_thought", names)
         # destructive maintenance is NOT exposed (ADR-0009)
         self.assertNotIn("reflog_expire", names)
@@ -151,6 +152,12 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error, log)
         self.assertEqual(log["thoughts"][0]["message"], "batch: ownership decisions")
         self.assertEqual(log["thoughts"][0]["id"], recorded["thought"])
+
+        # analytics: calibration/volatility over the same history (COG-045)
+        is_error, report = self.client.call_tool("analytics", {})
+        self.assertFalse(is_error, report)
+        self.assertGreaterEqual(report["assertions_seen"], 4)
+        self.assertIn("calibration_by_band", report)
 
         is_error, verify = self.client.call_tool("verify")
         self.assertFalse(is_error)

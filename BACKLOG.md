@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-04T22:10:00+03:00
+updated_datetime: 2026-07-05T12:20:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -51,12 +51,14 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-041 | Scale benchmark: synthetic 10x (all media 1.00; journal read-cost +6% vs +59-74%) + REAL history (transcript 10/10 at 48 calls/10min; markdown confabulated; journal 0 fabrications) — H0 fired, trust-differentiator found | `issues/COG-041.md` | findings report 2026-07-04 (`~/Reports/projects/cogit/research/2026-07-04-cog-041-scale-benchmark.md`); harness `--segments` + deep-probe fix, `test_belief_bench.py` scale smoke; spawned COG-042 |
 | COG-042 | `cogit dump` one-call reader surface (CLI+MCP+Rust parity); fact rows gain source_uri (dump readers fabricated URIs without it) | `issues/COG-042.md` | dump-medium readers score 1.00 on all probe classes from ONE artifact (6-9 tool calls vs 10-18); `test_cli.py::DumpTests`, rust `dump_one_call_surface`, MCP workflow step, interop step 14 |
 | COG-043 | SessionStart re-anchor hook: dump-digest lands in new session context automatically | `issues/COG-043.md` | `tests/test_hook.py` (first automated hook tests, incl. COG-012 capture modes); integrations README wiring |
+| COG-045 | Belief analytics: calibration per band/source (structural outcome inference: open/superseded/refuted/retired) + volatility ranking; integrations CLI + MCP tool | `issues/COG-045.md` | `tests/test_analytics.py` (classification, bands, volatility, empty repo); MCP workflow step; live-journal run 2026-07-05 |
 | COG-034 | Live MCP usage phase (2026-07-03..04): 10 tickets spawned (COG-035..044), 8 shipped; verdicts instrumented by COG-039/041 | `issues/COG-034.md` | findings report `~/Reports/projects/cogit/research/2026-07-04-cog-034-live-usage-findings.md`; journal pressure 189 loose vs 5000 threshold |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
+| COG-046 | ADR-0013: derivation edges (premises) — unlocks taint reachability, maximin support paths, criticality; feeds trust line COG-026 | P2 | `issues/COG-046.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 
 ## Open — later (P1/P2 stories, unscoped)

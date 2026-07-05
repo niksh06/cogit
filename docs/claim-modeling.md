@@ -149,6 +149,27 @@ arg): subjects stay natural entity URIs, and claim identity still
 separates projects because qualifiers are part of the canonical claim.
 Filter with `cogit facts --project cogit` or `--subject 'cogit:*'`.
 
+## Rule 9: tasks — track the state, not the content
+
+Cogit works as the provenance substrate of a task tracker, not as the
+tracker itself. Model task STATE as beliefs and keep task CONTENT in
+documents:
+
+```sh
+cogit add-fact --kind agent_decision --subject "task:COG-045" \
+  --predicate status --object in_progress --source agent:session \
+  --confidence 9600 --project cogit --commit
+# on completion: supersede (remove reason=superseded + new belief done)
+```
+
+- predicates: `status`, `owner`, `priority` — one belief each; a status
+  transition is a supersede, giving the full audited history for free
+  (who moved it, when, on what basis — `blame-fact` per transition).
+- the spec text, checklists, descriptions live in files
+  (`issues/<ID>.md`) or annotations — never in the object (Rule 2).
+- queries/boards/sorting are out of scope by ADR-0002: `facts --subject
+  'task:*' --project X` is the ceiling, and that is intentional.
+
 ## References
 
 - `docs/spec/object-format-v1.md` — schemas and canonical rules
