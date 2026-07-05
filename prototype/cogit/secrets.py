@@ -6,7 +6,7 @@ Policy: reject the write, never redact-and-store. Detection layers:
 2. Credential-in-URL and credential-assignment shapes.
 3. Entropy heuristic for opaque random tokens, with explicit
    false-positive guards: Cogit object IDs (sha256:<hex>), plain hex,
-   and code identifiers must never trigger.
+   code identifiers, and filesystem paths (COG-048) must never trigger.
 
 OQ-013 stays open for scanner-grade detection; this is the local layer.
 """
@@ -42,10 +42,29 @@ def _shannon_entropy(text: str) -> float:
     return -sum((n / total) * math.log2(n / total) for n in counts.values())
 
 
+_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][a-z0-9._+-]*$")
+
+
+def _looks_like_path(token: str) -> bool:
+    """Filesystem-path guard (COG-048): several word-like segments joined
+    by '/'. Random base64 also contains '/', so segments must individually
+    read as words/dates (at most a leading capital), not as random
+    mixed-case chunks."""
+    if token.count("/") < 2:
+        return False
+    segments = [segment for segment in token.split("/") if segment]
+    if len(segments) < 2:
+        return False
+    wordy = sum(1 for segment in segments if _PATH_SEGMENT_RE.match(segment))
+    return wordy * 3 >= len(segments) * 2
+
+
 def _looks_like_random_token(token: str) -> bool:
     """High-entropy opaque token check with false-positive guards."""
     if _HEX_RE.match(token):
         return False  # covers Cogit object ids and other hashes
+    if _looks_like_path(token):
+        return False  # report/artifact paths are legitimate belief values
     has_upper = any(c.isupper() for c in token)
     has_lower = any(c.islower() for c in token)
     has_digit = any(c.isdigit() for c in token)

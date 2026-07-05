@@ -140,6 +140,20 @@ fn contradictory_commit_rejected_then_refute_flow() {
 }
 
 #[test]
+fn secret_guard_allows_paths_rejects_tokens() {
+    use cogit_core::secrets::reject_suspected_secrets;
+    // COG-048: the exact live-failure string must be accepted
+    let path = json!(
+        "~/Reports/projects/aleph/reference/cogit-claim-modeling-memo-2026-07-05.md");
+    assert!(reject_suspected_secrets(&path, "test").is_ok());
+    let code_path = json!("/Users/nsh/Downloads/cogit/prototype/integrations/mcp_server.py");
+    assert!(reject_suspected_secrets(&code_path, "test").is_ok());
+    // slash-bearing random material must STILL be rejected
+    let token = json!("token aB3dEf/Gh1jKl/Mn0pQr/xY2zAb/Cd4eFg9");
+    assert!(matches!(reject_suspected_secrets(&token, "test"), Err(CoreError::User(_))));
+}
+
+#[test]
 fn dump_one_call_surface() {
     let (_dir, repo) = make_repo();
     let (_c1, a1) = repo.add_fact(&fact_doc("alpha", 9000)).unwrap();

@@ -29,6 +29,17 @@ class SecretPatternTests(unittest.TestCase):
     def test_high_entropy_token_rejected(self):
         self.assert_rejected("session bearer m7Kp2Qx9Lw4Vt8Zr3Ny6Jb1Hd5Fg0Sc")
 
+    def test_filesystem_paths_never_trigger(self):
+        # COG-048: the exact live-failure string must be accepted
+        self.assert_allowed(
+            "~/Reports/projects/aleph/reference/cogit-claim-modeling-memo-2026-07-05.md")
+        self.assert_allowed("/Users/nsh/Downloads/cogit/prototype/integrations/mcp_server.py")
+        self.assert_allowed("see docs/spec/repository-layout-v1.md and tools/interop-test.sh")
+        # slash-bearing random material must STILL be rejected
+        self.assert_rejected("token aB3dEf/Gh1jKl/Mn0pQr/xY2zAb/Cd4eFg9")
+        self.assert_rejected(
+            "aws_secret_access_key: 'wJalrXUtnFEMIK7MDENG" + "bPxRfiCYEXAMPLEKEYaa'")
+
     def test_cogit_object_ids_never_trigger(self):
         # the tool's own IDs are long hex strings — guards must pass them
         self.assert_allowed("sha256:" + "ab12cd34" * 8)

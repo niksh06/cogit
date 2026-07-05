@@ -59,9 +59,36 @@ fn shannon_entropy(text: &str) -> f64 {
         .sum::<f64>()
 }
 
+/// Filesystem-path guard (COG-048): several word-like segments joined by
+/// '/'. Random base64 also contains '/', so segments must individually
+/// read as words/dates (at most a leading capital), not random chunks.
+fn looks_like_path(token: &str) -> bool {
+    if token.matches('/').count() < 2 {
+        return false;
+    }
+    let segments: Vec<&str> = token.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.len() < 2 {
+        return false;
+    }
+    let wordy = segments
+        .iter()
+        .filter(|segment| {
+            let mut chars = segment.chars();
+            chars.next().map(|c| c.is_ascii_alphanumeric()).unwrap_or(false)
+                && chars.all(|c| {
+                    c.is_ascii_lowercase() || c.is_ascii_digit() || "._+-".contains(c)
+                })
+        })
+        .count();
+    wordy * 3 >= segments.len() * 2
+}
+
 fn looks_like_random_token(token: &str) -> bool {
     if token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return false; // covers Cogit object ids and other hashes
+    }
+    if looks_like_path(token) {
+        return false; // report/artifact paths are legitimate belief values
     }
     let has_upper = token.chars().any(|c| c.is_ascii_uppercase());
     let has_lower = token.chars().any(|c| c.is_ascii_lowercase());

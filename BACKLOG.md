@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-05T13:25:00+03:00
+updated_datetime: 2026-07-05T13:50:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -53,13 +53,13 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-043 | SessionStart re-anchor hook: dump-digest lands in new session context automatically | `issues/COG-043.md` | `tests/test_hook.py` (first automated hook tests, incl. COG-012 capture modes); integrations README wiring |
 | COG-045 | Belief analytics: calibration per band/source (structural outcome inference: open/superseded/refuted/retired) + volatility ranking; integrations CLI + MCP tool | `issues/COG-045.md` | `tests/test_analytics.py` (classification, bands, volatility, empty repo); MCP workflow step; live-journal run 2026-07-05 |
 | COG-047 | `cogit lint`: mechanical cookbook checks (prose objects, date-stamped ids, blob qualifiers, band mismatches, missing project); integrations CLI + MCP tool | `issues/COG-047.md` | `tests/test_lint.py` (per-rule fixtures, project filter, empty repo); live run 2026-07-05: 64 findings incl. cogit's own facts |
+| COG-048 | Secret-heuristic path guard: word-like '/'-segments never trigger entropy check; slash-bearing base64 still rejected | `issues/COG-048.md` | `test_secrets.py::test_filesystem_paths_never_trigger` (exact live-failure string) + rust `secret_guard_allows_paths_rejects_tokens` |
 | COG-034 | Live MCP usage phase (2026-07-03..04): 10 tickets spawned (COG-035..044), 8 shipped; verdicts instrumented by COG-039/041 | `issues/COG-034.md` | findings report `~/Reports/projects/cogit/research/2026-07-04-cog-034-live-usage-findings.md`; journal pressure 189 loose vs 5000 threshold |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
-| COG-048 | Secret heuristic false-positive on filesystem paths (blocked a legit memo-pointer fact 2026-07-05) — path guard both runtimes | P1 | `issues/COG-048.md` |
 | COG-046 | ADR-0013: derivation edges (premises) — unlocks taint reachability, maximin support paths, criticality; feeds trust line COG-026 | P2 | `issues/COG-046.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 
