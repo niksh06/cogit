@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-05T13:10:00+03:00
+updated_datetime: 2026-07-05T13:25:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -59,6 +59,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
+| COG-048 | Secret heuristic false-positive on filesystem paths (blocked a legit memo-pointer fact 2026-07-05) — path guard both runtimes | P1 | `issues/COG-048.md` |
 | COG-046 | ADR-0013: derivation edges (premises) — unlocks taint reachability, maximin support paths, criticality; feeds trust line COG-026 | P2 | `issues/COG-046.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 
