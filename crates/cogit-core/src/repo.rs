@@ -1326,6 +1326,7 @@ impl Repository {
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri").cloned().unwrap_or(Value::Null),
+            "actor": assertion["actor"],
             "premises": assertion.get("premises").cloned().unwrap_or_else(|| json!([])),
             "status": assertion["status"],
         }))

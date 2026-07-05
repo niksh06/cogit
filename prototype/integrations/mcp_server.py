@@ -15,6 +15,7 @@ Register with Claude Code:
 import json
 import os
 import sys
+import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -25,6 +26,11 @@ from cogit.repo import Repository, init_repository  # noqa: E402
 from cogit.verify import verify_repository  # noqa: E402
 
 PROTOCOL_FALLBACK = "2024-11-05"
+
+# One MCP server process serves one Claude Code session, so a per-process
+# id makes parallel sessions distinguishable in the journal without any
+# caller discipline (COG-052). Override with COGIT_ACTOR for stable names.
+INSTANCE_ACTOR = os.environ.get("COGIT_ACTOR") or f"agent-{uuid.uuid4().hex[:8]}"
 
 OID = {"type": "string", "description": "object id (sha256:<hex> or unique prefix >= 6 hex chars)"}
 REF = {"type": "string", "description": "branch, anchor, HEAD, or thought id"}
@@ -63,7 +69,7 @@ TOOLS = [
                              "description": "assertion ids this belief derives from (ADR-0013)"},
                 "source": {"type": "string", "description": "type[:uri], e.g. agent:session-x"},
                 "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
-                "actor": {"type": "string", "default": "agent"},
+                "actor": {"type": "string", "description": "default: per-session instance id"},
                 "method": {"type": "string", "default": "mcp"},
                 "commit": {"type": "boolean", "description": "atomic micro-commit (parallel-safe)"},
                 "message": {"type": "string", "description": "thought message when commit=true"},
@@ -81,7 +87,7 @@ TOOLS = [
         "name": "commit_thought",
         "description": "Commit staged facts as a reasoning checkpoint (thought).",
         "inputSchema": _schema(
-            {"message": {"type": "string"}, "author": {"type": "string", "default": "agent"}},
+            {"message": {"type": "string"}, "author": {"type": "string", "description": "default: per-session instance id"}},
             required=("message",),
         ),
     },
@@ -145,7 +151,7 @@ TOOLS = [
                     {"assertion_id": OID, "reason": {"type": "string"}},
                     required=("assertion_id", "reason"))},
                 "message": {"type": "string"},
-                "author": {"type": "string", "default": "agent"},
+                "author": {"type": "string", "description": "default: per-session instance id"},
             },
             required=("facts", "message"),
         ),
@@ -223,7 +229,7 @@ TOOLS = [
                 "target": OID,
                 "message": {"type": "string"},
                 "namespace": {"type": "string", "default": "notes"},
-                "author": {"type": "string", "default": "agent"},
+                "author": {"type": "string", "description": "default: per-session instance id"},
             },
             required=("target", "message"),
         ),
@@ -292,7 +298,7 @@ class CogitTools:
             "source": source,
             "confidence_bps": args["confidence_bps"],
             "asserted_at": _now(),
-            "actor": args.get("actor", "agent"),
+            "actor": args.get("actor", INSTANCE_ACTOR),
             "method": {"type": args.get("method", "mcp")},
         }
         if args.get("premises"):
@@ -318,7 +324,7 @@ class CogitTools:
         for fact in args["facts"]:
             claim_oid, assertion_oid = self.repo.add_fact(self._build_fact_doc(fact))
             staged.append({"claim": claim_oid, "assertion": assertion_oid})
-        thought = self.repo.commit_thought(args["message"], args.get("author", "agent"))
+        thought = self.repo.commit_thought(args["message"], args.get("author", INSTANCE_ACTOR))
         return {"thought": thought, "facts": staged, "removed": removed}
 
     def tool_remove_fact(self, args):
@@ -326,7 +332,7 @@ class CogitTools:
         return {"outcome": self.repo.remove_fact(oid, args["reason"]), "assertion": oid}
 
     def tool_commit_thought(self, args):
-        return {"thought": self.repo.commit_thought(args["message"], args.get("author", "agent"))}
+        return {"thought": self.repo.commit_thought(args["message"], args.get("author", INSTANCE_ACTOR))}
 
     def tool_status(self, _args):
         return self.repo.status()
@@ -400,7 +406,7 @@ class CogitTools:
         oid = self.repo.annotate(
             args["target"], args["message"],
             namespace=args.get("namespace", "notes"),
-            author=args.get("author", "agent"),
+            author=args.get("author", INSTANCE_ACTOR),
         )
         return {"annotation": oid, "namespace": args.get("namespace", "notes")}
 

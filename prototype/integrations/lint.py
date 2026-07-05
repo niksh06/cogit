@@ -75,6 +75,9 @@ def check_row(row, shared=True):
     if row["source"] == "agent" and confidence >= 9800 and not row["negation"]:
         add("R4-overconfident-inference", "info",
             f"agent-sourced belief at {confidence} bps — 9800+ is the observation band")
+    if row.get("actor") == "agent":
+        add("R10-generic-actor", "info",
+            "actor 'agent' defeats attribution — use a stable instance id (Rule 10)")
     for key, value in row["qualifiers"].items():
         if isinstance(value, str) and len(value) > 80:
             add("R6-blob-qualifier", "warn",

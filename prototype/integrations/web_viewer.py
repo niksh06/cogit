@@ -670,7 +670,8 @@ function renderFactDetail(box, title) {
   kv(box, 'kind', r.kind);
   kv(box, 'status', r.status);
   kv(box, 'confidence', pct(r.confidence_bps) + ' (' + r.confidence_bps + ' bps)');
-  kv(box, 'source', r.source);
+  kv(box, 'source', r.source + (r.source_uri ? ':' + r.source_uri : ''));
+  kv(box, 'actor', r.actor);
   const q = r.qualifiers || {};
   Object.keys(q).forEach(k => kv(box, 'qualifier · ' + k, String(q[k])));
   kv(box, 'assertion', r.assertion, true);

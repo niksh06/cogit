@@ -13,7 +13,7 @@ from tests.helpers import make_repo, ts  # noqa: E402
 
 
 def doc(subject, predicate, obj, source_type="agent", confidence=9000,
-        qualifiers=None, when=ts(0)):
+        qualifiers=None, when=ts(0), actor="tester"):
     return {
         "claim": {"type": "claim", "kind": "agent_decision", "subject": subject,
                   "predicate": predicate, "object": obj,
@@ -21,7 +21,7 @@ def doc(subject, predicate, obj, source_type="agent", confidence=9000,
         "assertion": {"type": "assertion", "status": "asserted",
                       "source": {"type": source_type, "uri": "test:lint"},
                       "confidence_bps": confidence, "asserted_at": when,
-                      "actor": "tester", "method": {"type": "fixture"}},
+                      "actor": actor, "method": {"type": "fixture"}},
     }
 
 
@@ -49,6 +49,7 @@ class LintTests(unittest.TestCase):
                 qualifiers={"project": "demo", "details": "x" * 120}, when=ts(3)),
             doc("svc:queue", "depth", 5, source_type="tool", confidence=7000, when=ts(4)),
             doc("svc:cache", "ttl", 60, qualifiers={}, when=ts(5)),
+            doc("svc:anon", "state", "ok", actor="agent", when=ts(6)),
         ]
         for n, fixture in enumerate(cases):
             self.repo.micro_commit(fixture, timestamp=ts(10 + n))
@@ -60,7 +61,8 @@ class LintTests(unittest.TestCase):
         self.assertEqual(rules["R6-blob-qualifier"], 1)
         self.assertEqual(rules["R4-underconfident-observation"], 1)
         self.assertEqual(rules["R8-missing-project"], 1)
-        self.assertEqual(report["facts_checked"], 5)
+        self.assertEqual(rules["R10-generic-actor"], 1)
+        self.assertEqual(report["facts_checked"], 6)
         self.assertGreaterEqual(report["warnings"], 5)
 
     def test_project_filter_scopes_lint(self):

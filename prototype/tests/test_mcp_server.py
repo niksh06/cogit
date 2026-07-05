@@ -133,6 +133,9 @@ class McpServerTests(unittest.TestCase):
         is_error, facts = self.client.call_tool("facts")
         self.assertFalse(is_error)
         self.assertEqual(len(facts["facts"]), 2)
+        # COG-052: explicit actors survive; nothing defaults to bare "agent"
+        for row in facts["facts"]:
+            self.assertNotEqual(row["actor"], "agent")
 
         # record: batch facts land as ONE thought (COG-044 affordance)
         is_error, recorded = self.client.call_tool("record", {
@@ -152,6 +155,12 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error, log)
         self.assertEqual(log["thoughts"][0]["message"], "batch: ownership decisions")
         self.assertEqual(log["thoughts"][0]["id"], recorded["thought"])
+        # COG-052: facts recorded without an explicit actor get the
+        # per-session instance id, never bare "agent"
+        is_error, facts = self.client.call_tool("facts", {"subject": "svc:a"})
+        self.assertFalse(is_error)
+        self.assertTrue(facts["facts"][0]["actor"].startswith("agent-"),
+                        facts["facts"][0]["actor"])
 
         # analytics: calibration/volatility over the same history (COG-045)
         is_error, report = self.client.call_tool("analytics", {})

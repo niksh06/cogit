@@ -378,7 +378,8 @@ Output per fact includes:
 
 - short assertion ID (full with `--json`);
 - claim kind, subject, predicate, object;
-- confidence and source type;
+- confidence, source type (`--json` adds `source_uri`, `actor`,
+  `premises`);
 - negations rendered unmistakably (COG-040): text shows `NOT <object>
   (negates <id>)`; JSON rows carry `negates` plus derived
   `negation: true`. A negation asserts the claim is FALSE — no

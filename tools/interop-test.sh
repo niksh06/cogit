@@ -138,6 +138,8 @@ $RUST add-fact --kind agent_decision --subject interop:derived --predicate concl
   --asserted-at $TS9 --project interop --premise $BASE --commit --timestamp $TS9 >/dev/null
 PREM=$($PY facts --subject interop:derived --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["premises"][0])')
 [ "$PREM" = "$BASE" ] || fail "premises did not round-trip: $PREM vs $BASE"
+WHO=$($PY facts --subject interop:derived --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["facts"][0]["actor"])')
+[ "$WHO" = "rs" ] || fail "actor did not round-trip: $WHO"
 ok
 
 step "dump agrees across runtimes (COG-042)"

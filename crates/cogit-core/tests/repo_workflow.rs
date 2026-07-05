@@ -172,6 +172,7 @@ fn premises_validate_and_round_trip() {
         .cloned()
         .unwrap();
     assert_eq!(row["premises"], json!([evidence]));
+    assert_eq!(row["actor"], json!("tester")); // COG-052: writer exposed in rows
 
     // a claim id is not an assertion (ADR-0013 write-time check)
     let mut bad = fact_doc("bad", 8000);

@@ -170,6 +170,24 @@ cogit add-fact --kind agent_decision --subject "task:COG-045" \
 - queries/boards/sorting are out of scope by ADR-0002: `facts --subject
   'task:*' --project X` is the ceiling, and that is intentional.
 
+## Rule 10: identity — actor is WHO wrote, source is WHERE it came from
+
+Attribution died in practice when everything wrote `actor: "agent"`
+(measured: 82 of 87 live assertions). Keep the two identity fields
+separate and specific:
+
+- `actor` — a stable identifier of the WRITER instance:
+  `fable`, `claude-code-<session8>`, `aleph-agent`. Never plain
+  `agent` (the linter flags it). The MCP server defaults the actor to a
+  per-session instance id automatically — override with `COGIT_ACTOR`
+  when you want a stable name.
+- `source` — provenance of the INFORMATION: `tool:pytest`,
+  `prompt:owner-decision`, `agent:<role>` for inferences. Do not smuggle
+  session identity here; that is what `actor` is for.
+- Unforgeable identity (signatures) is deliberately NOT this rule —
+  local journals trust the filesystem user; cryptographic attribution
+  arrives with sharing (COG-026).
+
 ## References
 
 - `docs/spec/object-format-v1.md` — schemas and canonical rules

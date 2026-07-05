@@ -954,6 +954,7 @@ class Repository:
             "confidence_bps": assertion["confidence_bps"],
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri"),
+            "actor": assertion["actor"],
             "premises": assertion.get("premises", []),
             "status": assertion["status"],
         }

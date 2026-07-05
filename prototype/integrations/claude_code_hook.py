@@ -67,6 +67,12 @@ def project_slug(payload):
     return re.sub(r"[^a-z0-9]+", "-", os.path.basename(cwd).lower()).strip("-") or "default"
 
 
+def hook_actor(payload):
+    """Attributable writer identity (COG-052): the hook knows its session."""
+    session = str(payload.get("session_id") or "")
+    return f"claude-code-{session[:8]}" if session else "claude-code"
+
+
 # -- selective event capture (COG-044 pilot, mechanism 1) ------------------------
 
 COMMIT_RE = re.compile(r"\[([\w./-]+)\s+([0-9a-f]{7,40})\]\s+(\S.*)")
@@ -113,7 +119,7 @@ def detect_events(payload):
     return events
 
 
-def stage_belief(repo, slug, event):
+def stage_belief(repo, slug, event, hook_actor_value="claude-code"):
     """Stage one event belief; supersede the previous value of the same
     claim family (same subject/predicate/qualifiers) — current-state
     semantics per claim-modeling Rule 5."""
@@ -143,7 +149,7 @@ def stage_belief(repo, slug, event):
             "source": {"type": "tool", "uri": event["uri"]},
             "confidence_bps": 9900,
             "asserted_at": now_utc(),
-            "actor": "claude-code",
+            "actor": hook_actor_value,
             "method": {"type": "event_capture"},
         },
     })
@@ -169,7 +175,7 @@ def capture_everything(repo, payload):
             "source": {"type": "tool", "uri": f"claude-code:{payload.get('session_id', 'session')}"},
             "confidence_bps": 10000,
             "asserted_at": now_utc(),
-            "actor": "claude-code",
+            "actor": hook_actor(payload),
             "method": {"type": "tool_result_capture"},
         },
     })
@@ -182,7 +188,7 @@ def on_post_tool_use(payload):
         return
     slug = project_slug(payload)
     for event in detect_events(payload):
-        stage_belief(repo, slug, event)
+        stage_belief(repo, slug, event, hook_actor_value=hook_actor(payload))
 
 
 def on_stop(payload):
@@ -192,7 +198,7 @@ def on_stop(payload):
         return
     repo.commit_thought(
         f"Turn checkpoint: {len(status['staged'])} captured belief(s)",
-        "claude-code",
+        hook_actor(payload),
         now_utc(),
     )
 

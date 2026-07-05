@@ -68,6 +68,7 @@ class HookTests(unittest.TestCase):
             "tool_name": "Bash",
             "tool_input": {"command": "git commit -m 'fix things'"},
             "tool_response": "[main abc1234] fix things\n 2 files changed",
+            "session_id": "sess42xyz-full",
         }
         hook.on_post_tool_use(first)
         hook.on_stop(first)
@@ -79,6 +80,8 @@ class HookTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)  # previous head_commit superseded
         self.assertEqual(rows[0]["object"], "def5678: follow-up")
         self.assertEqual(rows[0]["qualifiers"], {"branch": "main", "project": "demo"})
+        # COG-052: the writer is attributable down to the session
+        self.assertEqual(rows[0]["actor"], "claude-code-sess42xy")
 
     def test_selective_captures_suite_status_transitions(self):
         os.environ["COGIT_PROJECT"] = "demo"

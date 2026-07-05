@@ -63,6 +63,7 @@ class PremisesRepositoryTests(unittest.TestCase):
         self.assertEqual(by_assertion[derived["assertion"]]["premises"],
                          [self.base["assertion"]])
         self.assertEqual(by_assertion[self.base["assertion"]]["premises"], [])
+        self.assertEqual(by_assertion[self.base["assertion"]]["actor"], "tester")  # COG-052
         dump = self.repo.dump()
         dumped = {row["assertion"]: row for row in dump["facts"]}
         self.assertEqual(dumped[derived["assertion"]]["premises"],
