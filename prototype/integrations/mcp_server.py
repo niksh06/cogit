@@ -112,6 +112,15 @@ TOOLS = [
         "inputSchema": _schema({"from": REF, "to": REF}),
     },
     {
+        "name": "lint",
+        "description": (
+            "Claim-modeling linter (COG-047): checks ACTIVE beliefs against the cookbook — "
+            "prose objects, date-stamped subjects/predicates, blob qualifiers, band mismatches, "
+            "missing project qualifier. These silently disable supersede chains and analytics."
+        ),
+        "inputSchema": _schema({"ref": REF, "project": {"type": "string"}}),
+    },
+    {
         "name": "analytics",
         "description": (
             "Belief analytics (COG-045): calibration per confidence band and source type "
@@ -334,6 +343,10 @@ class CogitTools:
     def tool_analytics(self, args):
         from analytics import analyze  # lazy: script-dir import
         return analyze(self.repo, args.get("ref"), top=args.get("top", 20))
+
+    def tool_lint(self, args):
+        from lint import lint  # lazy: script-dir import
+        return lint(self.repo, args.get("ref"), project=args.get("project"))
 
     def tool_dump(self, args):
         return self.repo.dump(args.get("ref"), project=args.get("project"),

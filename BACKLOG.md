@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-05T12:20:00+03:00
+updated_datetime: 2026-07-05T13:10:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -52,6 +52,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-042 | `cogit dump` one-call reader surface (CLI+MCP+Rust parity); fact rows gain source_uri (dump readers fabricated URIs without it) | `issues/COG-042.md` | dump-medium readers score 1.00 on all probe classes from ONE artifact (6-9 tool calls vs 10-18); `test_cli.py::DumpTests`, rust `dump_one_call_surface`, MCP workflow step, interop step 14 |
 | COG-043 | SessionStart re-anchor hook: dump-digest lands in new session context automatically | `issues/COG-043.md` | `tests/test_hook.py` (first automated hook tests, incl. COG-012 capture modes); integrations README wiring |
 | COG-045 | Belief analytics: calibration per band/source (structural outcome inference: open/superseded/refuted/retired) + volatility ranking; integrations CLI + MCP tool | `issues/COG-045.md` | `tests/test_analytics.py` (classification, bands, volatility, empty repo); MCP workflow step; live-journal run 2026-07-05 |
+| COG-047 | `cogit lint`: mechanical cookbook checks (prose objects, date-stamped ids, blob qualifiers, band mismatches, missing project); integrations CLI + MCP tool | `issues/COG-047.md` | `tests/test_lint.py` (per-rule fixtures, project filter, empty repo); live run 2026-07-05: 64 findings incl. cogit's own facts |
 | COG-034 | Live MCP usage phase (2026-07-03..04): 10 tickets spawned (COG-035..044), 8 shipped; verdicts instrumented by COG-039/041 | `issues/COG-034.md` | findings report `~/Reports/projects/cogit/research/2026-07-04-cog-034-live-usage-findings.md`; journal pressure 189 loose vs 5000 threshold |
 
 ## Open — next
