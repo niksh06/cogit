@@ -147,6 +147,12 @@ sh tools/interop-test.sh                                # Python <-> Rust on one
   redacted (`docs/adr/0009-agent-autonomy-and-destructive-operations.md`).
 - Full invariant list: `docs/invariants.md`.
 
+## Support the author
+
+If you find **Cogit** useful, you can optionally support development on
+Boosty — entirely voluntary, no perks or obligations:
+**[Donate on Boosty](https://boosty.to/niksh612/donate)**
+
 ## License and contributions
 
 Licensed under the [Apache License 2.0](LICENSE). Contributions are
