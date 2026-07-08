@@ -69,6 +69,15 @@ class ViewerStateTests(unittest.TestCase):
         notes = state["annotations"][self.t2["thought"]]
         self.assertEqual(notes[0]["body"], "checked by viewer tests")
 
+    def test_nodes_carry_project_threads(self):
+        doc = fact_doc("threaded", when=ts(9))
+        doc["claim"]["qualifiers"]["project"] = "alpha"
+        t5 = self.repo.micro_commit(doc, timestamp=ts(9))
+        state = web_viewer.build_state(self.repo)
+        by_id = {n["id"]: n for n in state["graph"]}
+        self.assertEqual(by_id[t5["thought"]]["projects"], ["alpha"])
+        self.assertEqual(by_id[self.t4["thought"]]["projects"], [])
+
     def test_empty_repository_state(self):
         tmp2, repo2 = make_repo()
         self.addCleanup(tmp2.cleanup)
@@ -110,6 +119,11 @@ class ViewerHttpTests(unittest.TestCase):
         self.assertIn(b"cogit viewer", body)
         # live page polls; the snapshot marker is the ASSIGNMENT, absent here
         self.assertNotIn(b"window.COGIT_STATE = ", body)
+        # viewer v2 surface (COG-054): actor legend, toast, colored lanes,
+        # expandable long values, URL-synced filters
+        for marker in (b'id="actors"', b'id="toast"', b"laneColor",
+                       b"EXPANDED", b"syncUrl"):
+            self.assertIn(marker, body)
 
     def test_unknown_path_is_json_404(self):
         with self.assertRaises(urllib.error.HTTPError) as ctx:

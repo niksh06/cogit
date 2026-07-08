@@ -2,9 +2,12 @@
 """Cogit read-only web viewer (COG-038): stdlib HTTP, zero dependencies.
 
 Serves a single-page UI over one journal: thought DAG across all branch
-tips, active beliefs with filters, per-fact introducers (blame), anchors,
-annotations, and the no-arg recap. Strictly read-only — this module never
-calls a mutating Repository method (ADR-0009 analogy with the MCP surface).
+tips with colored lanes (COG-054), per-writer avatars and an actor legend,
+project threads (dim everything outside the selected project), active
+beliefs with filters and expandable long values, per-fact introducers
+(blame), anchors, annotations, and the no-arg recap. Strictly read-only —
+this module never calls a mutating Repository method (ADR-0009 analogy
+with the MCP surface).
 
     python3 web_viewer.py --repo ~/.cogit-journal/cogit           # serve
     python3 web_viewer.py --repo ... --snapshot journal.html      # export
@@ -102,6 +105,13 @@ def build_state(repo: Repository) -> dict:
     for oid in reversed(order):  # newest first, matching `log`
         thought = thoughts[oid]
         added, removed = deltas[oid]
+        # Project threads (COG-054): which projects this thought touched,
+        # from the project qualifier of every belief it added or removed.
+        projects = set()
+        for aid in list(added) + list(removed):
+            value = (rows[aid].get("qualifiers") or {}).get("project")
+            if value:
+                projects.add(str(value))
         nodes.append(
             {
                 "id": oid,
@@ -112,6 +122,7 @@ def build_state(repo: Repository) -> dict:
                 "operation": thought["operation"],
                 "branches": branch_names.get(oid, []),
                 "anchors": anchor_names.get(oid, []),
+                "projects": sorted(projects),
                 "added": added,
                 "removed": removed,
             }
@@ -272,37 +283,68 @@ main { display:grid; grid-template-columns:minmax(360px,1fr) minmax(420px,1.4fr)
 .chip.err { color:var(--red); border-color:var(--red); }
 .chip.snap { color:var(--purple); border-color:var(--purple); }
 .chip.warn { color:var(--red); border-color:var(--red); }
-#graph { position:relative; overflow:auto; max-height:calc(100vh - 160px); }
+#graph { position:relative; overflow:auto; max-height:calc(100vh - 200px); }
 .rail { position:absolute; top:0; left:0; }
-.edge { fill:none; stroke:var(--muted); stroke-width:1.5; opacity:.5; }
+.edge { fill:none; stroke:var(--muted); stroke-width:2; opacity:.6; }
 .dot.commit { fill:var(--accent); } .dot.merge { fill:var(--purple); }
+.dot { transition:opacity .2s ease; }
+.dot.dimmed { opacity:.2; }
 .ring { fill:none; stroke:var(--amber); stroke-width:1.5; }
 .rows { position:relative; }
-.thought { padding:4px 8px; border-radius:8px; cursor:pointer; overflow:hidden; }
+.thought { padding:4px 8px; border-radius:8px; cursor:pointer; overflow:hidden;
+  transition:background .15s ease, opacity .2s ease; }
 .thought:hover { background:rgba(125,165,255,.08); }
 .thought.sel { background:rgba(125,165,255,.16); }
+.thought.dimmed { opacity:.35; }
+.avatar { width:16px; height:16px; border-radius:50%; flex:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:8.5px; font-weight:700; color:#fff; letter-spacing:.2px; }
+#actors { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.actorchip { display:inline-flex; gap:6px; align-items:center; cursor:pointer;
+  border:1px solid var(--border); border-radius:999px; padding:2px 8px 2px 3px;
+  font-size:12px; transition:border-color .15s ease, background .15s ease; }
+.actorchip:hover { border-color:var(--accent); }
+.actorchip.active { border-color:var(--accent); background:rgba(125,165,255,.12); }
+.chip.proj { cursor:pointer; }
 .l1 { display:flex; gap:6px; align-items:center; white-space:nowrap; overflow:hidden; }
 .l1 .msg { overflow:hidden; text-overflow:ellipsis; font-weight:600; font-size:13.5px; }
 .l2 { display:flex; gap:10px; font-size:12px; margin-top:1px; }
 .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
 input, select { background:var(--bg); color:var(--fg); border:1px solid var(--border);
   border-radius:6px; padding:4px 8px; font-size:13px; }
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline:2px solid var(--accent); outline-offset:1px; }
 .tablewrap { overflow:auto; max-height:44vh; }
 table { width:100%; border-collapse:collapse; }
 th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px;
   color:var(--muted); padding:4px 8px; position:sticky; top:0; background:var(--panel); }
 td { padding:5px 8px; border-top:1px solid var(--border); vertical-align:top; }
-tbody tr { cursor:pointer; }
+tbody tr { cursor:pointer; transition:background .15s ease; }
 tbody tr:hover { background:rgba(125,165,255,.08); }
 tbody tr.sel { background:rgba(125,165,255,.16); }
+tbody tr.expand, tbody tr.expand:hover { background:none; cursor:default; }
+tr.expand td { border-top:none; padding-top:0; }
+.fulltext { white-space:pre-wrap; word-break:break-word; font-size:13px;
+  padding:6px 10px; background:rgba(125,165,255,.06); border-radius:6px; }
+.expander { background:none; border:none; color:var(--muted); cursor:pointer;
+  font-size:11px; padding:0 4px 0 0; }
+.expander:hover { color:var(--accent); }
 .obj { max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bar { width:56px; height:6px; background:var(--border); border-radius:3px;
   display:inline-block; margin-right:6px; vertical-align:middle; }
 .fill { height:100%; background:var(--accent); border-radius:3px; display:block; }
 .kv { display:flex; gap:8px; padding:2px 0; font-size:13px; }
 .kv .k { width:120px; flex:none; }
-.kv .v { word-break:break-all; }
-.msg-big { font-size:15px; font-weight:600; margin-bottom:8px; }
+.kv .v { word-break:break-all; white-space:pre-wrap; }
+.kv .v.copy { cursor:pointer; }
+.kv .v.copy:hover { color:var(--accent); }
+.msg-big { font-size:15px; font-weight:600; margin-bottom:8px;
+  white-space:pre-wrap; word-break:break-word; }
+#toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+  background:var(--panel); border:1px solid var(--border); border-radius:8px;
+  padding:6px 12px; font-size:13px; opacity:0; pointer-events:none;
+  transition:opacity .2s ease; z-index:5; }
+#toast.show { opacity:1; }
 #detail h3 { font-size:11px; text-transform:uppercase; letter-spacing:.6px;
   margin:12px 0 6px; color:var(--muted); }
 .fact-line { padding:3px 6px; border-radius:6px; cursor:pointer; font-size:13px; }
@@ -328,6 +370,7 @@ tbody tr.sel { background:rgba(125,165,255,.16); }
 <main>
   <section class="card">
     <h2>Thoughts</h2>
+    <div id="actors"></div>
     <div id="graph"></div>
   </section>
   <div class="col">
@@ -355,6 +398,7 @@ tbody tr.sel { background:rgba(125,165,255,.16); }
     </section>
   </div>
 </main>
+<div id="toast" role="status"></div>
 <!--STATE-->
 <script>
 'use strict';
@@ -370,7 +414,90 @@ const fmtTs = t => t ? t.replace('T', ' ').replace('Z', '').replace('+00:00', ''
 const pct = bps => (bps / 100).toFixed(0) + '%';
 const distinct = a => [...new Set(a)];
 
-let STATE = null, SIG = '', SEL = null, URL_PROJECT_APPLIED = false;
+let STATE = null, SIG = '', SEL = null, URL_FILTERS_APPLIED = false;
+let ACTOR_SEL = null, LIVE_MODE = true, DOTS = {}, TOAST_TIMER = null;
+const EXPANDED = new Set();
+
+// Lane palette: one stable color per graph column, git-graph style.
+const PALETTE = ['#4da3ff', '#3fb950', '#d29922', '#bc8cff',
+                 '#f85149', '#39c5cf', '#e27fab', '#9e8cfc'];
+const laneColor = c => PALETTE[c % PALETTE.length];
+
+function hashCode(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+const actorHue = a => hashCode(String(a)) % 360;
+
+function initials(a) {
+  const parts = String(a).split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  const two = parts.length > 1 ? parts[0][0] + parts[1][0] : String(a).slice(0, 2);
+  return two.toUpperCase();
+}
+
+function avatar(a) {
+  const d = el('span', 'avatar', initials(a));
+  d.style.background = 'hsl(' + actorHue(a) + ' 45% 42%)';
+  d.title = a;
+  return d;
+}
+
+const projColor = p => 'hsl(' + (hashCode(String(p)) % 360) + ' 60% 62%)';
+
+function projChip(p) {
+  const c = el('span', 'chip proj', p);
+  c.style.color = projColor(p);
+  c.style.borderColor = projColor(p);
+  c.title = 'filter beliefs and highlight the ' + p + ' thread';
+  c.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const sel = $('#f-project');
+    sel.value = sel.value === p ? '' : p;
+    onFilterChange();
+  });
+  return c;
+}
+
+function relTime(t) {
+  const ms = Date.now() - Date.parse(t);
+  if (!isFinite(ms) || ms < 0) return fmtTs(t);
+  const s = Math.round(ms / 1000);
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  if (h < 48) return h + 'h ago';
+  const d = Math.round(h / 24);
+  if (d < 14) return d + 'd ago';
+  return fmtTs(t).slice(0, 10);
+}
+
+function tsEl(t) {
+  const e = el('span', 'rel', LIVE_MODE ? relTime(t) : fmtTs(t));
+  e.dataset.ts = t;
+  e.title = fmtTs(t) + ' UTC';
+  return e;
+}
+
+function refreshTimes() {
+  if (!LIVE_MODE) return;
+  document.querySelectorAll('.rel').forEach(e => { e.textContent = relTime(e.dataset.ts); });
+}
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(TOAST_TIMER);
+  TOAST_TIMER = setTimeout(() => t.classList.remove('show'), 1200);
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast('copied'), () => toast('copy failed'));
+  } else { toast('copy unavailable'); }
+}
 
 function setLive(ok) {
   const e = $('#live');
@@ -391,7 +518,8 @@ async function poll() {
 }
 
 function renderAll() {
-  renderHeader(); renderRecap(); renderGraph(); populateFilters(); renderBeliefs();
+  // filters go first: URL-provided values must exist before graph dimming
+  renderHeader(); renderRecap(); populateFilters(); renderGraph(); renderBeliefs();
   renderDetail();
 }
 
@@ -433,8 +561,44 @@ function renderRecap() {
   box.append(list);
 }
 
+function renderActors() {
+  const box = $('#actors'); box.innerHTML = '';
+  const counts = {};
+  STATE.graph.forEach(n => { counts[n.author] = (counts[n.author] || 0) + 1; });
+  const actors = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  if (ACTOR_SEL && !counts[ACTOR_SEL]) ACTOR_SEL = null;
+  if (actors.length < 2) return;  // a single writer needs no legend
+  actors.forEach(a => {
+    const c = el('span', 'actorchip' + (ACTOR_SEL === a ? ' active' : ''));
+    c.append(avatar(a), el('span', null, a), el('span', 'muted', counts[a]));
+    c.title = 'highlight thoughts by ' + a;
+    c.addEventListener('click', () => {
+      ACTOR_SEL = ACTOR_SEL === a ? null : a;
+      renderActors();
+      applyDim();
+    });
+    box.append(c);
+  });
+}
+
+function applyDim() {
+  const proj = $('#f-project').value;
+  document.querySelectorAll('#graph .thought').forEach(d => {
+    const n = nodeById(d.dataset.id);
+    if (!n) return;
+    const dim = (proj && !(n.projects || []).includes(proj)) ||
+      (ACTOR_SEL && n.author !== ACTOR_SEL);
+    d.classList.toggle('dimmed', !!dim);
+    if (DOTS[n.id]) DOTS[n.id].classList.toggle('dimmed', !!dim);
+  });
+}
+
 function renderGraph() {
-  const box = $('#graph'); box.innerHTML = '';
+  const box = $('#graph');
+  const scroll = box.scrollTop;
+  box.innerHTML = '';
+  DOTS = {};
+  renderActors();
   const nodes = STATE.graph;
   if (!nodes.length) {
     box.append(el('div', 'empty', 'journal is empty — no thoughts yet'));
@@ -477,6 +641,8 @@ function renderGraph() {
       const path = document.createElementNS(NS, 'path');
       path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${m}, ${x2} ${m}, ${x2} ${y2}`);
       path.setAttribute('class', 'edge');
+      // forks and merges take the color of the deeper (branch-side) lane
+      path.style.stroke = laneColor(Math.max(col[n.id], col[p]));
       svg.append(path);
     }
   }
@@ -489,8 +655,14 @@ function renderGraph() {
     }
     const dot = document.createElementNS(NS, 'circle');
     dot.setAttribute('cx', x(n.id)); dot.setAttribute('cy', y(n.id));
-    dot.setAttribute('r', 4.5);
+    dot.setAttribute('r', n.operation === 'merge' ? 5.5 : 4.5);
     dot.setAttribute('class', 'dot ' + (n.operation === 'merge' ? 'merge' : 'commit'));
+    dot.style.fill = laneColor(col[n.id]);
+    if (n.operation === 'merge') {
+      dot.style.stroke = 'var(--fg)';
+      dot.style.strokeWidth = '1.2';
+    }
+    DOTS[n.id] = dot;
     svg.append(dot);
   }
   box.append(svg);
@@ -502,12 +674,18 @@ function renderGraph() {
     d.style.height = H + 'px';
     if (SEL && SEL.type === 'thought' && SEL.id === n.id) d.classList.add('sel');
     const l1 = el('div', 'l1');
-    l1.append(el('span', 'msg', n.message));
+    l1.append(avatar(n.author), el('span', 'msg', n.message));
+    l1.title = n.message;
     n.branches.forEach(b => l1.append(el('span', 'chip branch', b)));
     n.anchors.forEach(a => l1.append(el('span', 'chip anchor', '⚓ ' + a)));
     const l2 = el('div', 'l2 muted');
-    l2.append(el('span', 'mono', short(n.id)),
-      el('span', null, n.author + ' · ' + fmtTs(n.timestamp)));
+    const who = el('span', null, n.author);
+    who.style.color = 'hsl(' + actorHue(n.author) + ' 55% 60%)';
+    l2.append(el('span', 'mono', short(n.id)), who, tsEl(n.timestamp));
+    (n.projects || []).slice(0, 2).forEach(p => l2.append(projChip(p)));
+    if ((n.projects || []).length > 2) {
+      l2.append(el('span', 'chip', '+' + (n.projects.length - 2)));
+    }
     if (n.added.length) l2.append(el('span', 'pos', '+' + n.added.length));
     if (n.removed.length) l2.append(el('span', 'neg', '−' + n.removed.length));
     d.append(l1, l2);
@@ -515,19 +693,44 @@ function renderGraph() {
     list.append(d);
   });
   box.append(list);
+  box.scrollTop = scroll;
+  applyDim();
 }
+
+const URL_KEYS = {project: 'f-project', kind: 'f-kind',
+                  subject: 'f-subject', predicate: 'f-predicate'};
 
 function populateFilters() {
   fillSelect($('#f-project'),
     distinct(STATE.head_facts.map(r => (r.qualifiers || {}).project).filter(Boolean)), 'project');
   fillSelect($('#f-kind'), distinct(STATE.head_facts.map(r => r.kind)), 'kind');
-  if (!URL_PROJECT_APPLIED) {
-    // bookmarkable per-project views: /?project=<slug> preselects the filter
-    const want = new URLSearchParams(location.search).get('project');
-    const sel = $('#f-project');
-    if (want && [...sel.options].some(o => o.value === want)) sel.value = want;
-    URL_PROJECT_APPLIED = true;
+  if (!URL_FILTERS_APPLIED) {
+    // bookmarkable views: /?project=<slug>&subject=…&kind=… preselect filters
+    const q = new URLSearchParams(location.search);
+    for (const [key, id] of Object.entries(URL_KEYS)) {
+      const want = q.get(key), e = document.getElementById(id);
+      if (!want) continue;
+      if (e.tagName === 'SELECT' && ![...e.options].some(o => o.value === want)) continue;
+      e.value = want;
+    }
+    URL_FILTERS_APPLIED = true;
   }
+}
+
+function syncUrl() {
+  const q = new URLSearchParams(location.search);
+  for (const [key, id] of Object.entries(URL_KEYS)) {
+    const v = document.getElementById(id).value.trim();
+    if (v) q.set(key, v); else q.delete(key);
+  }
+  const qs = q.toString();
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+}
+
+function onFilterChange() {
+  syncUrl();
+  renderBeliefs();
+  applyDim();
 }
 
 function fillSelect(sel, values, label) {
@@ -554,6 +757,16 @@ function renderBeliefs() {
   const rows = beliefRows();
   $('#beliefs-n').textContent = rows.length === STATE.head_facts.length
     ? '(' + rows.length + ')' : '(' + rows.length + ' / ' + STATE.head_facts.length + ')';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = el('td', 'empty', STATE.head_facts.length
+      ? 'no beliefs match the filters' : 'no active beliefs yet');
+    td.colSpan = 5;
+    tr.append(td);
+    tr.className = 'expand';
+    tbody.append(tr);
+    return;
+  }
   rows.forEach(r => {
     const tr = document.createElement('tr');
     tr.dataset.id = r.assertion;
@@ -561,8 +774,22 @@ function renderBeliefs() {
     tr.append(el('td', 'mono', r.subject));
     tr.append(el('td', null, r.predicate));
     const objText = (r.negates ? 'NOT ' : '') + String(r.object);
-    const objTd = el('td', 'obj', objText);
+    const objTd = el('td', 'obj');
     objTd.title = objText;
+    const long = objText.length > 60 || objText.includes('\n');
+    if (long) {
+      const open = EXPANDED.has(r.assertion);
+      const btn = el('button', 'expander', open ? '▾' : '▸');
+      btn.title = open ? 'collapse' : 'expand full text';
+      btn.setAttribute('aria-expanded', String(open));
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (open) EXPANDED.delete(r.assertion); else EXPANDED.add(r.assertion);
+        renderBeliefs();
+      });
+      objTd.append(btn);
+    }
+    objTd.append(el('span', null, objText));
     if (r.negates) objTd.append(el('span', 'chip negs', '⊘ negation'));
     tr.append(objTd);
     const conf = el('td');
@@ -576,6 +803,15 @@ function renderBeliefs() {
     tr.append(kindTd);
     tr.addEventListener('click', () => select({type: 'fact', id: r.assertion}));
     tbody.append(tr);
+    if (long && EXPANDED.has(r.assertion)) {
+      const xr = document.createElement('tr');
+      xr.className = 'expand';
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.append(el('div', 'fulltext', objText));
+      xr.append(td);
+      tbody.append(xr);
+    }
   });
 }
 
@@ -596,7 +832,12 @@ function nodeById(id) { return STATE.graph.find(n => n.id === id); }
 
 function kv(box, key, value, mono) {
   const d = el('div', 'kv');
-  d.append(el('span', 'k muted', key), el('span', 'v' + (mono ? ' mono' : ''), value));
+  const v = el('span', 'v' + (mono ? ' mono copy' : ''), value);
+  if (mono) {
+    v.title = 'click to copy';
+    v.addEventListener('click', () => copyText(String(value)));
+  }
+  d.append(el('span', 'k muted', key), v);
   box.append(d);
 }
 
@@ -643,6 +884,7 @@ function renderThoughtDetail(box, title) {
   kv(box, 'author', n.author);
   kv(box, 'time', fmtTs(n.timestamp));
   kv(box, 'operation', n.operation);
+  if ((n.projects || []).length) kv(box, 'projects', n.projects.join(', '));
   kv(box, 'id', n.id, true);
   n.parents.forEach(p => kv(box, 'parent', short(p), true));
   if (n.added.length) {
@@ -704,9 +946,13 @@ function renderFactDetail(box, title) {
 
 function init() {
   ['f-subject', 'f-predicate', 'f-project', 'f-kind'].forEach(id =>
-    document.getElementById(id).addEventListener('input', renderBeliefs));
+    document.getElementById(id).addEventListener('input', onFilterChange));
   $('#detail-close').addEventListener('click', () => select(null));
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && SEL) select(null);
+  });
   if (window.COGIT_STATE) {
+    LIVE_MODE = false;  // snapshot: absolute timestamps, no polling
     STATE = window.COGIT_STATE;
     const live = $('#live');
     live.className = 'chip snap';
@@ -715,6 +961,7 @@ function init() {
   } else {
     poll();
     setInterval(poll, 3000);
+    setInterval(refreshTimes, 30000);
   }
 }
 init();

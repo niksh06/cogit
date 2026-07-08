@@ -22,8 +22,10 @@ rather than a convention over Git (short version: Git cannot merge or blame
 beliefs, and blame for a confirmed root cause](docs/assets/cogit-viewer.png)
 
 *The bundled read-only web viewer on a debugging session: a competing
-hypothesis on its own branch, an anchored milestone, the same root-cause
-claim strengthening from 72% (inference) to 98% (verified), and the exact
+hypothesis on its own colored branch lane, three writers with their own
+avatars (who wrote what — Rule 10 attribution), an anchored milestone, the
+same root-cause claim strengthening from 72% (inference) to 98% (verified)
+with the observations it was derived from (premises), and the exact
 thought that introduced it.*
 
 ## Status
@@ -125,10 +127,17 @@ python3 prototype/integrations/web_viewer.py --repo ~/.cogit-journal/my-project
 # read-only UI at http://127.0.0.1:8323/  (or --snapshot journal.html)
 ```
 
+The DAG draws each branch on its own colored lane; every thought carries
+its writer's avatar and the project threads it touched. Click an actor in
+the legend or a project chip to light up just that line of work; long
+belief values expand in place; filters live in the URL, so a filtered
+view is bookmarkable. `deploy/` runs the same viewer as a read-only
+container (`docker compose up -d`).
+
 Run the test suites:
 
 ```sh
-cd prototype && python3 -m unittest discover -s tests   # 133 tests
+cd prototype && python3 -m unittest discover -s tests   # 166 tests
 cargo test                                              # core + golden vectors
 sh tools/interop-test.sh                                # Python <-> Rust on one repo
 ```
