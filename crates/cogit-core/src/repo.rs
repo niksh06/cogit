@@ -1392,8 +1392,15 @@ impl Repository {
 
     /// Belief-state digest between two points — context recovery (COG-031).
     /// With no source (COG-036), starts from the NEWEST anchor, or the
-    /// root thought when no anchors exist.
-    pub fn recap(&self, source: Option<&str>, target: Option<&str>) -> Result<Value> {
+    /// root thought when no anchors exist. With project (COG-053), rows
+    /// are scoped to the qualifier and the thought list keeps only
+    /// thoughts that changed that project's beliefs.
+    pub fn recap(
+        &self,
+        source: Option<&str>,
+        target: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<Value> {
         let to_oid = self.resolve(target.unwrap_or("HEAD"))?;
         let mut from_anchor: Option<String> = None;
         let from_oid = match source {
@@ -1428,8 +1435,41 @@ impl Repository {
                 .into_iter()
                 .filter(|(oid, _)| !ancestry_from.contains(oid))
                 .collect();
+            let mut mindset_cache: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+            let mut row_cache: BTreeMap<String, Value> = BTreeMap::new();
             for oid in self.topo_oldest_first(&between)? {
                 let t = &between[&oid];
+                if let Some(project) = project {
+                    // keep only thoughts that changed this project's beliefs
+                    let mut ids: Vec<String> = vec![oid.clone()];
+                    if let Some(parents) = t["parents"].as_array() {
+                        ids.extend(parents.iter().filter_map(|p| p.as_str().map(str::to_owned)));
+                    }
+                    for id in &ids {
+                        if !mindset_cache.contains_key(id) {
+                            let mindset = self.mindset_assertions(Some(id))?;
+                            mindset_cache.insert(id.clone(), mindset);
+                        }
+                    }
+                    let mut parent_union: BTreeSet<String> = BTreeSet::new();
+                    for id in ids.iter().skip(1) {
+                        parent_union.extend(mindset_cache[id].iter().cloned());
+                    }
+                    let mut touched = false;
+                    for aid in mindset_cache[&oid].symmetric_difference(&parent_union) {
+                        if !row_cache.contains_key(aid) {
+                            let row = self.fact_row(aid)?;
+                            row_cache.insert(aid.clone(), row);
+                        }
+                        if Self::row_matches(&row_cache[aid], None, None, Some(project)) {
+                            touched = true;
+                            break;
+                        }
+                    }
+                    if !touched {
+                        continue;
+                    }
+                }
                 thoughts_out.push(json!({
                     "id": oid,
                     "message": t["message"],
@@ -1441,14 +1481,19 @@ impl Repository {
         }
         let from_set = self.mindset_assertions(Some(&from_oid))?;
         let to_set = self.mindset_assertions(Some(&to_oid))?;
-        let added: Vec<Value> = to_set.difference(&from_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
-        let removed: Vec<Value> =
+        let mut added: Vec<Value> = to_set.difference(&from_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
+        let mut removed: Vec<Value> =
             from_set.difference(&to_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
+        if let Some(project) = project {
+            added.retain(|row| Self::row_matches(row, None, None, Some(project)));
+            removed.retain(|row| Self::row_matches(row, None, None, Some(project)));
+        }
         Ok(json!({
             "from": from_oid,
             "from_anchor": from_anchor,
             "same_point": from_oid == to_oid,
             "to": to_oid,
+            "project": project,
             "thoughts": thoughts_out,
             "added": added,
             "removed": removed,
@@ -1550,7 +1595,7 @@ impl Repository {
             })
             .collect();
         doc["log"] = json!(log_rows);
-        doc["recap"] = match self.recap(since, Some(&thought_oid)) {
+        doc["recap"] = match self.recap(since, Some(&thought_oid), project) {
             Ok(recap) => recap,
             Err(CoreError::User(message)) => json!({"error": message}),
             Err(err) => return Err(err),

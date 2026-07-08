@@ -115,9 +115,12 @@ TOOLS = [
         "name": "recap",
         "description": (
             "Context recovery: thoughts and net belief changes between a past point and now. "
-            "Call with NO arguments when resuming work — it starts from the newest anchor."
+            "Call with NO arguments when resuming work — it starts from the newest anchor. "
+            "In a shared journal pass project to scope rows AND thoughts to your project."
         ),
-        "inputSchema": _schema({"from": REF, "to": REF}),
+        "inputSchema": _schema({"from": REF, "to": REF,
+                                "project": {"type": "string",
+                                            "description": "scope to this project qualifier"}}),
     },
     {
         "name": "lint",
@@ -346,7 +349,8 @@ class CogitTools:
         )
 
     def tool_recap(self, args):
-        return self.repo.recap(args.get("from"), args.get("to"))
+        return self.repo.recap(args.get("from"), args.get("to"),
+                               project=args.get("project"))
 
     def tool_analytics(self, args):
         from analytics import analyze  # lazy: script-dir import

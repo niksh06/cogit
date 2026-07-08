@@ -143,3 +143,36 @@ class BeliefQueryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecapProjectScopeTests(unittest.TestCase):
+    """COG-053: recap --project keeps a shared-journal resume readable."""
+
+    def setUp(self):
+        self.tmp, self.repo = make_repo()
+        self.addCleanup(self.tmp.cleanup)
+        base = fact_doc("origin", when=ts(0))
+        base["claim"]["qualifiers"]["project"] = "alpha"
+        self.repo.micro_commit(base, timestamp=ts(0))
+        self.repo.anchor("m", "HEAD", timestamp=ts(1))
+        alpha = fact_doc("alpha-move", when=ts(2))
+        alpha["claim"]["qualifiers"]["project"] = "alpha"
+        self.alpha = self.repo.micro_commit(alpha, timestamp=ts(2))
+        beta = fact_doc("beta-move", when=ts(3))
+        beta["claim"]["qualifiers"]["project"] = "beta"
+        self.beta = self.repo.micro_commit(beta, timestamp=ts(3))
+
+    def test_project_scopes_rows_and_thoughts(self):
+        full = self.repo.recap()
+        self.assertEqual(len(full["added"]), 2)
+        self.assertEqual(len(full["thoughts"]), 2)
+
+        scoped = self.repo.recap(project="alpha")
+        self.assertEqual([row["assertion"] for row in scoped["added"]],
+                         [self.alpha["assertion"]])
+        self.assertEqual([t["id"] for t in scoped["thoughts"]],
+                         [self.alpha["thought"]])
+        self.assertEqual(scoped["project"], "alpha")
+
+        empty = self.repo.recap(project="nosuch")
+        self.assertEqual((empty["added"], empty["thoughts"]), ([], []))

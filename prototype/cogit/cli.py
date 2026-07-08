@@ -422,7 +422,7 @@ def cmd_facts(args):
 
 def cmd_recap(args):
     repo = _open_repo(args)
-    result = repo.recap(args.source, args.target)
+    result = repo.recap(args.source, args.target, project=args.project)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
         return 0
@@ -785,6 +785,8 @@ def build_parser():
     p = sub.add_parser("recap", help="belief-state digest between two points (context recovery)")
     p.add_argument("source", nargs="?", help="anchor, ref, or thought to recap from (default: newest anchor)")
     p.add_argument("target", nargs="?", help="default: HEAD")
+    p.add_argument("--project",
+                   help="shared journal: scope rows and thoughts to this project (COG-053)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_recap)
 

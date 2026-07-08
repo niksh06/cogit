@@ -987,11 +987,14 @@ class Repository:
         ]
         return {"thought": thought_oid, "facts": rows}
 
-    def recap(self, source: str = None, target: str = None):
+    def recap(self, source: str = None, target: str = None, project: str = None):
         """Belief-state digest between two points — context recovery (COG-031).
 
         With no source (COG-036), recap starts from the NEWEST anchor, or
-        the root thought when no anchors exist.
+        the root thought when no anchors exist. With project (COG-053),
+        added/removed rows are scoped to that project qualifier and the
+        thought list keeps only thoughts that CHANGED the project's
+        beliefs — resume on a shared journal stays readable.
         """
         to_oid = self.resolve(target or "HEAD")
         from_anchor = None
@@ -1015,20 +1018,47 @@ class Repository:
                 )
             ancestry_from = set(self._ancestry(from_oid))
             between = {oid: t for oid, t in ancestry_to.items() if oid not in ancestry_from}
+            order = self._topo_oldest_first(between)
+            if project is not None:
+                mindset_cache, row_cache = {}, {}
+
+                def mindset_of(oid):
+                    if oid not in mindset_cache:
+                        mindset_cache[oid] = self._mindset_assertions(oid)
+                    return mindset_cache[oid]
+
+                def touches_project(oid):
+                    parent_union = set()
+                    for parent in between[oid]["parents"]:
+                        parent_union |= mindset_of(parent)
+                    for aid in mindset_of(oid) ^ parent_union:
+                        if aid not in row_cache:
+                            row_cache[aid] = self._fact_row(aid)
+                        if self._row_matches(row_cache[aid], project=project):
+                            return True
+                    return False
+
+                order = [oid for oid in order if touches_project(oid)]
             thoughts = [
                 {"id": oid, **{k: between[oid][k] for k in ("message", "author", "timestamp", "operation")}}
-                for oid in self._topo_oldest_first(between)
+                for oid in order
             ]
         from_set = self._mindset_assertions(from_oid)
         to_set = self._mindset_assertions(to_oid)
+        added = [self._fact_row(aid) for aid in sorted(to_set - from_set)]
+        removed = [self._fact_row(aid) for aid in sorted(from_set - to_set)]
+        if project is not None:
+            added = [row for row in added if self._row_matches(row, project=project)]
+            removed = [row for row in removed if self._row_matches(row, project=project)]
         return {
             "from": from_oid,
             "from_anchor": from_anchor,
             "same_point": from_oid == to_oid,
             "to": to_oid,
+            "project": project,
             "thoughts": thoughts,
-            "added": [self._fact_row(aid) for aid in sorted(to_set - from_set)],
-            "removed": [self._fact_row(aid) for aid in sorted(from_set - to_set)],
+            "added": added,
+            "removed": removed,
             "position": self.status(),
         }
 
@@ -1096,7 +1126,7 @@ class Repository:
             for oid in list(reversed(order))[: max(0, log_limit)]
         ]
         try:
-            doc["recap"] = self.recap(since, thought_oid)
+            doc["recap"] = self.recap(since, thought_oid, project=project)
         except UserError as exc:
             doc["recap"] = {"error": str(exc)}
         return doc

@@ -349,11 +349,17 @@ Rules:
   remaining candidate range is reported and the command exits `1`
   (inconclusive), mirroring git-bisect's "could be any of" behavior.
 
-### `cogit recap [<from>] [<to>]`
+### `cogit recap [<from>] [<to>] [--project N]`
 
 Belief-state digest for context recovery (COG-031): the thoughts between
 two points plus the net fact changes with decoded claim content, and the
 current position.
+
+`--project` (COG-053) scopes a shared journal: added/removed rows are
+filtered by the project qualifier AND the thought list keeps only
+thoughts that changed that project's beliefs. Without it, a resume on a
+multi-project journal returns every project's delta (measured: 110 KB on
+a live journal). `dump` forwards its `--project` into this recap block.
 
 Rules:
 

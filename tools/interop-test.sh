@@ -142,6 +142,13 @@ WHO=$($PY facts --subject interop:derived --json | $PYBIN -c 'import json,sys; p
 [ "$WHO" = "rs" ] || fail "actor did not round-trip: $WHO"
 ok
 
+step "recap --project scopes rows and thoughts alike (COG-053)"
+PYP=$($PY recap --project interop --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(len(d["added"]), len(d["removed"]), len(d["thoughts"]))')
+RSP=$($RUST recap --project interop --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(len(d["added"]), len(d["removed"]), len(d["thoughts"]))')
+[ "$PYP" = "$RSP" ] || fail "recap --project disagrees: $PYP vs $RSP"
+[ "$PYP" = "1 0 1" ] || fail "unexpected scoped recap shape: $PYP"
+ok
+
 step "dump agrees across runtimes (COG-042)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')

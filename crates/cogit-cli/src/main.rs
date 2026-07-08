@@ -196,6 +196,9 @@ enum Cmd {
     Recap {
         source: Option<String>,
         target: Option<String>,
+        /// shared journal: scope rows and thoughts to this project (COG-053)
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -873,9 +876,9 @@ fn run(cli: Cli) -> Result<i32> {
             println!("source:   {}", result["source"]);
             Ok(0)
         }
-        Cmd::Recap { source, target, json } => {
+        Cmd::Recap { source, target, project, json } => {
             let repo = open_repo(&cli.repo)?;
-            let result = repo.recap(source.as_deref(), target.as_deref())?;
+            let result = repo.recap(source.as_deref(), target.as_deref(), project.as_deref())?;
             if json {
                 println!("{}", pretty(&result));
                 return Ok(0);

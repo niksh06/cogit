@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-05T16:20:00+03:00
+updated_datetime: 2026-07-08T11:20:00+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -58,6 +58,7 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-049 | Premises v1 shipped: optional assertions.premises (sorted/unique/existing, identity-bearing), 7th golden vector (frozen six intact), --premise CLI both runtimes + MCP arg, rows/show/dump/viewer exposure | `issues/COG-049.md` | `test_premises.py` (5), rust `premises_validate_and_round_trip`, vectors byte-for-byte both runtimes, interop step 15 |
 | COG-051 | Persistent viewer deployment: alpine container, :ro journal mount, read-only rootfs, 127.0.0.1-only, restart unless-stopped; /?project= bookmarkable views | `issues/COG-051.md` | live container serving shared journal 2026-07-05 (compose up -d, /api/state green) |
 | COG-052 | Writer attribution: actor exposed in rows (both runtimes), MCP per-session instance-id defaults, hook signs claude-code-<session8>, cookbook Rule 10 + lint R10 | `issues/COG-052.md` | mcp/hook/lint/premises tests updated; interop actor round-trip; measured baseline: 82/87 assertions were actor=agent |
+| COG-053 | recap --project: scoped rows AND thoughts on shared-journal resume (review from sibling session; 110KB no-arg recap reproduced); dump forwards project into its recap block | `issues/COG-053.md` | `RecapProjectScopeTests` + rust `recap_project_scopes_shared_journal`; interop step 17 (scoped shape equal across runtimes) |
 | COG-034 | Live MCP usage phase (2026-07-03..04): 10 tickets spawned (COG-035..044), 8 shipped; verdicts instrumented by COG-039/041 | `issues/COG-034.md` | findings report `~/Reports/projects/cogit/research/2026-07-04-cog-034-live-usage-findings.md`; journal pressure 189 loose vs 5000 threshold |
 
 ## Open — next

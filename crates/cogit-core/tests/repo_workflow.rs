@@ -154,6 +154,34 @@ fn secret_guard_allows_paths_rejects_tokens() {
 }
 
 #[test]
+fn recap_project_scopes_shared_journal() {
+    let (_dir, repo) = make_repo();
+    let mut base = fact_doc("origin", 9000);
+    base["claim"]["qualifiers"]["project"] = json!("alpha");
+    repo.micro_commit(&base, None, None, Some(&ts(0))).unwrap();
+    repo.anchor("m", "HEAD", "agent", Some(&ts(1))).unwrap();
+    let mut alpha = fact_doc("alpha-move", 9000);
+    alpha["claim"]["qualifiers"]["project"] = json!("alpha");
+    let alpha = repo.micro_commit(&alpha, None, None, Some(&ts(2))).unwrap();
+    let mut beta = fact_doc("beta-move", 9000);
+    beta["claim"]["qualifiers"]["project"] = json!("beta");
+    repo.micro_commit(&beta, None, None, Some(&ts(3))).unwrap();
+
+    let full = repo.recap(None, None, None).unwrap();
+    assert_eq!(full["added"].as_array().unwrap().len(), 2);
+    assert_eq!(full["thoughts"].as_array().unwrap().len(), 2);
+
+    let scoped = repo.recap(None, None, Some("alpha")).unwrap();
+    assert_eq!(scoped["added"].as_array().unwrap().len(), 1);
+    assert_eq!(scoped["thoughts"].as_array().unwrap().len(), 1);
+    assert_eq!(scoped["thoughts"][0]["id"], alpha["thought"]);
+
+    let empty = repo.recap(None, None, Some("nosuch")).unwrap();
+    assert!(empty["added"].as_array().unwrap().is_empty());
+    assert!(empty["thoughts"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn premises_validate_and_round_trip() {
     let (_dir, repo) = make_repo();
     let (claim_oid, evidence) = repo.add_fact(&fact_doc("evidence", 9900)).unwrap();
@@ -255,7 +283,7 @@ fn micro_commit_noop_and_filters() {
     let none = repo.facts(None, None, None, Some("beta")).unwrap();
     assert_eq!(none["facts"].as_array().unwrap().len(), 0);
     // no-arg recap: no anchors -> from root; same_point at the single thought
-    let recap = repo.recap(None, None).unwrap();
+    let recap = repo.recap(None, None, None).unwrap();
     assert_eq!(recap["same_point"], true);
     assert_eq!(recap["from_anchor"], Value::Null);
 }
