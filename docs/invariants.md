@@ -1,7 +1,7 @@
 # Cogit Invariants
 
 created_datetime: 2026-05-26T21:40:00+03:00
-updated_datetime: 2026-05-27T09:41:00+03:00
+updated_datetime: 2026-07-10T02:10:00+03:00
 status: Draft
 
 ## Purpose
@@ -36,6 +36,7 @@ These invariants are the safety rails for Cogit implementation. If a feature vio
 24. A negated claim must explicitly link to the claim it negates.
 25. Activating a negated claim requires removing the original active assertion with reason `refuted`.
 26. Assertion premises reference existing assertions only; the derivation graph is acyclic by construction (ADR-0013).
+27. A thought's recorded removals (when present) are consistent with its actual mindset delta: every entry was held by a parent mindset and is absent from the thought's own mindset (ADR-0014).
 
 ## Mutation Invariants
 

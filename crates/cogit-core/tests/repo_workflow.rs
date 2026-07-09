@@ -322,6 +322,12 @@ fn lifecycle_supersede_refute_retire_atomic() {
         .unwrap();
     assert_eq!(repo.log(None).unwrap().len(), before + 1);
     assert_eq!(superseded["old_assertion"].as_str(), Some(a1.as_str()));
+    // ADR-0014: the thought itself records WHY the assertion left the mindset
+    let head = &repo.log(None).unwrap()[0];
+    assert_eq!(
+        head["removals"],
+        json!([{"assertion": a1, "reason": "superseded"}])
+    );
     let rows = repo.facts(None, None, None, None).unwrap();
     let facts = rows["facts"].as_array().unwrap();
     assert_eq!(facts.len(), 1);

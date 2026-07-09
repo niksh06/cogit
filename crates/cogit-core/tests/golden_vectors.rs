@@ -23,8 +23,9 @@ fn all_types_present() {
         .collect();
     assert_eq!(
         types,
-        // the trailing assertion is the additive premises vector (ADR-0013)
-        ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion"]
+        // trailing additions: premises assertion (ADR-0013), removals thought
+        // (ADR-0014) — the frozen earlier vectors never change
+        ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion", "thought"]
     );
 }
 

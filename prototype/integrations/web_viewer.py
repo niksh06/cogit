@@ -125,6 +125,9 @@ def build_state(repo: Repository) -> dict:
                 "projects": sorted(projects),
                 "added": added,
                 "removed": removed,
+                # ADR-0014: recorded removal reasons, when the thought has them
+                "removals": {entry["assertion"]: entry["reason"]
+                             for entry in thought.get("removals", [])},
             }
         )
 
@@ -893,7 +896,12 @@ function renderThoughtDetail(box, title) {
   }
   if (n.removed.length) {
     box.append(el('h3', null, 'Removed beliefs (' + n.removed.length + ')'));
-    n.removed.forEach(a => box.append(factLine(a, 'removed')));
+    n.removed.forEach(a => {
+      const line = factLine(a, 'removed');
+      const why = (n.removals || {})[a];
+      if (why) line.append(el('span', 'chip', why));
+      box.append(line);
+    });
   }
   annotationsBlock(box, [n.id]);
 }

@@ -21,8 +21,10 @@ class VectorTests(unittest.TestCase):
     def test_all_types_present(self):
         self.assertEqual(
             [v["type"] for v in self.vectors],
-            # the trailing assertion is the additive premises vector (ADR-0013)
-            ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion"],
+            # trailing additions: premises assertion (ADR-0013), removals
+            # thought (ADR-0014) — the frozen earlier vectors never change
+            ["claim", "assertion", "mindset", "thought", "anchor", "annotation",
+             "assertion", "thought"],
         )
 
     def test_vectors_reproduce(self):
@@ -40,10 +42,18 @@ class VectorTests(unittest.TestCase):
         for vector in self.vectors:
             by_type.setdefault(vector["type"], vector)  # first occurrence wins
         self.assertEqual(by_type["assertion"]["object"]["claim"], by_type["claim"]["object_id"])
-        premises_vector = self.vectors[-1]
+        premises_vector = self.vectors[-2]
         self.assertEqual(premises_vector["object"]["premises"],
                          [by_type["assertion"]["object_id"]])
         self.assertEqual(premises_vector["object"]["claim"], by_type["claim"]["object_id"])
+        removals_vector = self.vectors[-1]
+        self.assertEqual(removals_vector["object"]["removals"],
+                         [{"assertion": by_type["assertion"]["object_id"],
+                           "reason": "superseded"}])
+        self.assertEqual(removals_vector["object"]["parents"],
+                         [by_type["thought"]["object_id"]])
+        self.assertEqual(removals_vector["object"]["mindset"],
+                         by_type["mindset"]["object_id"])
         self.assertEqual(by_type["mindset"]["object"]["assertions"], [by_type["assertion"]["object_id"]])
         self.assertEqual(by_type["thought"]["object"]["mindset"], by_type["mindset"]["object_id"])
         self.assertEqual(by_type["anchor"]["object"]["target"], by_type["thought"]["object_id"])

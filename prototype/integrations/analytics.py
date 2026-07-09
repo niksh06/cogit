@@ -109,9 +109,21 @@ def belief_outcomes(repo, ref=None):
 
         added_negates = {row["negates"] for row in added if row["negates"]}
         added_families = {family_key(row): row for row in added}
+        # ADR-0014: recorded removal reasons on the thought take precedence
+        # for the recognized lifecycle labels; structure outranks labels for
+        # refutation, and free-text reasons fall back to structural inference.
+        recorded = {entry["assertion"]: entry["reason"]
+                    for entry in thoughts[oid].get("removals", [])}
         for row in removed:
             if row["claim"] in added_negates:
                 outcomes[row["assertion"]] = "refuted"
+                continue
+            reason = recorded.get(row["assertion"])
+            if reason == "refuted":
+                outcomes[row["assertion"]] = "refuted"
+                continue
+            if reason == "superseded":
+                outcomes[row["assertion"]] = "superseded"
                 continue
             replacement = added_families.get(family_key(row))
             if replacement is not None:

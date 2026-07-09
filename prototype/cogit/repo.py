@@ -360,17 +360,23 @@ class Repository:
                 mindset_oid = self.store.write(
                     {"type": "mindset", "assertions": sorted(new_assertions), "created_at": ts}
                 )
-                thought_oid = self.store.write(
-                    {
-                        "type": "thought",
-                        "parents": [parent] if parent else [],
-                        "mindset": mindset_oid,
-                        "operation": "commit",
-                        "message": message,
-                        "author": author,
-                        "timestamp": ts,
-                    }
-                )
+                thought = {
+                    "type": "thought",
+                    "parents": [parent] if parent else [],
+                    "mindset": mindset_oid,
+                    "operation": "commit",
+                    "message": message,
+                    "author": author,
+                    "timestamp": ts,
+                }
+                if removals:
+                    # ADR-0014: durable removal provenance on the thought itself
+                    thought["removals"] = sorted(
+                        ({"assertion": entry["id"], "reason": str(entry["reason"])}
+                         for entry in removals),
+                        key=lambda entry: entry["assertion"],
+                    )
+                thought_oid = self.store.write(thought)
                 try:
                     if branch is not None:
                         self.refs.update_ref(branch, thought_oid, parent, author, "commit", message, ts)
@@ -580,17 +586,23 @@ class Repository:
         else:
             parents = [parent] if parent else []
             operation = "commit"
-        thought_oid = self.store.write(
-            {
-                "type": "thought",
-                "parents": parents,
-                "mindset": mindset_oid,
-                "operation": operation,
-                "message": message,
-                "author": author,
-                "timestamp": timestamp,
-            }
-        )
+        thought = {
+            "type": "thought",
+            "parents": parents,
+            "mindset": mindset_oid,
+            "operation": operation,
+            "message": message,
+            "author": author,
+            "timestamp": timestamp,
+        }
+        if index["removed_facts"]:
+            # ADR-0014: the removal reasons survive the index — on the thought
+            thought["removals"] = sorted(
+                ({"assertion": entry["id"], "reason": entry["reason"]}
+                 for entry in index["removed_facts"]),
+                key=lambda entry: entry["assertion"],
+            )
+        thought_oid = self.store.write(thought)
 
         reason = message
         if branch is not None:
@@ -1212,6 +1224,7 @@ class Repository:
             source = from_oid
         from_oid = self.resolve(source)
         thoughts = []
+        removal_reasons = {}
         if from_oid != to_oid:
             ancestry_to = self._ancestry(to_oid)
             if from_oid not in ancestry_to:
@@ -1221,6 +1234,9 @@ class Repository:
             ancestry_from = set(self._ancestry(from_oid))
             between = {oid: t for oid, t in ancestry_to.items() if oid not in ancestry_from}
             order = self._topo_oldest_first(between)
+            for oid in order:  # ADR-0014: newest removal reason in the window wins
+                for entry in between[oid].get("removals", []):
+                    removal_reasons[entry["assertion"]] = entry["reason"]
             if project is not None:
                 mindset_cache, row_cache = {}, {}
 
@@ -1249,6 +1265,8 @@ class Repository:
         to_set = self._mindset_assertions(to_oid)
         added = [self._fact_row(aid) for aid in sorted(to_set - from_set)]
         removed = [self._fact_row(aid) for aid in sorted(from_set - to_set)]
+        for row in removed:
+            row["removal_reason"] = removal_reasons.get(row["assertion"])
         if project is not None:
             added = [row for row in added if self._row_matches(row, project=project)]
             removed = [row for row in removed if self._row_matches(row, project=project)]

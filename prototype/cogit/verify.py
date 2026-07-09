@@ -83,6 +83,37 @@ def verify_repository(repo):
             for parent in obj["parents"]:
                 check_link(oid, parent, "annotation", "missing-annotation-parent")
 
+    # -- removal provenance consistency (ADR-0014) ---------------------------------
+    def mindset_of(thought_oid):
+        thought = objects.get(thought_oid)
+        if thought is None or thought.get("type") != "thought":
+            return set()
+        mindset = objects.get(thought["mindset"])
+        if mindset is None or mindset.get("type") != "mindset":
+            return set()
+        return set(mindset["assertions"])
+
+    for oid, obj in sorted(objects.items()):
+        if obj["type"] != "thought" or "removals" not in obj:
+            continue
+        own = mindset_of(oid)
+        parent_union = set()
+        for parent in obj["parents"]:
+            parent_union |= mindset_of(parent)
+        recorded = {entry["assertion"] for entry in obj["removals"]}
+        for aid in sorted(recorded):
+            if aid in own:
+                _finding(findings, "error", "removal-not-removed",
+                         f"{oid} records removal of {aid} but its mindset still holds it")
+            elif aid not in parent_union:
+                _finding(findings, "error", "removal-not-in-parents",
+                         f"{oid} records removal of {aid} which no parent mindset held")
+        if len(obj["parents"]) == 1:
+            uncovered = sorted(parent_union - own - recorded)
+            if uncovered:
+                _finding(findings, "warning", "removals-incomplete",
+                         f"{oid} removed {len(uncovered)} assertion(s) without a recorded reason")
+
     # -- contradictory mindsets (invariants 24-25; warning, not corruption) --------
     for oid, obj in sorted(objects.items()):
         if obj["type"] != "mindset":

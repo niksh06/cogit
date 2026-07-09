@@ -180,6 +180,13 @@ Rules:
 - `message` is non-empty.
 - `author` is non-empty.
 - `timestamp` is required.
+- OPTIONAL `removals` (ADR-0014, additive): non-empty list of
+  `{"assertion": "sha256:...", "reason": "<non-empty>"}`, sorted by
+  `assertion`, unique — the durable record of WHY each assertion left the
+  mindset in this thought. Absent field ≡ no recorded reasons (all
+  pre-ADR objects stay valid). The field is part of the preimage
+  (identity-bearing). `verify` cross-checks entries against the actual
+  parent-to-mindset delta.
 
 ### Anchor
 

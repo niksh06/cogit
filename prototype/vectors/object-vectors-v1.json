@@ -117,6 +117,29 @@
       "canonical_json": "{\"actor\":\"agent\",\"asserted_at\":\"2026-07-05T12:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":8200,\"method\":{\"type\":\"inference\"},\"premises\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"source\":{\"type\":\"agent\",\"uri\":\"session:derivation\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
       "preimage": "assertion 367\u0000{\"actor\":\"agent\",\"asserted_at\":\"2026-07-05T12:00:00Z\",\"claim\":\"sha256:7f84a47c4368b19484bdee398fbb2224dbc1d72c7f1c1beb3b793f91243b1f61\",\"confidence_bps\":8200,\"method\":{\"type\":\"inference\"},\"premises\":[\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\"],\"source\":{\"type\":\"agent\",\"uri\":\"session:derivation\"},\"status\":\"asserted\",\"type\":\"assertion\"}",
       "object_id": "sha256:5b0af471b681e6d6a316ccce248fdc5c6cc09ff1fd169533b4db1223f997b34e"
+    },
+    {
+      "type": "thought",
+      "object": {
+        "type": "thought",
+        "parents": [
+          "sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316"
+        ],
+        "mindset": "sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8",
+        "operation": "commit",
+        "message": "Superseded the stale preference with the confirmed one.",
+        "author": "agent",
+        "timestamp": "2026-07-10T12:00:00Z",
+        "removals": [
+          {
+            "assertion": "sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf",
+            "reason": "superseded"
+          }
+        ]
+      },
+      "canonical_json": "{\"author\":\"agent\",\"message\":\"Superseded the stale preference with the confirmed one.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\"],\"removals\":[{\"assertion\":\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\",\"reason\":\"superseded\"}],\"timestamp\":\"2026-07-10T12:00:00Z\",\"type\":\"thought\"}",
+      "preimage": "thought 452\u0000{\"author\":\"agent\",\"message\":\"Superseded the stale preference with the confirmed one.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\"],\"removals\":[{\"assertion\":\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\",\"reason\":\"superseded\"}],\"timestamp\":\"2026-07-10T12:00:00Z\",\"type\":\"thought\"}",
+      "object_id": "sha256:cd009be0d66fbd6f5f179702ee49214ba6988cb6dc8acc5f834ddaecc8a29851"
     }
   ]
 }

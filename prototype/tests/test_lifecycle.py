@@ -117,5 +117,103 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len(self.repo.status()["staged"]), 1)  # staging survives
 
 
+class RemovalProvenanceTests(unittest.TestCase):
+    """ADR-0014: removal reasons survive the index — on the thought."""
+
+    def setUp(self):
+        self.tmp, self.repo = make_repo()
+        self.addCleanup(self.tmp.cleanup)
+        self.v1 = self.repo.micro_commit(fact_doc("owner", obj="core"), timestamp=ts(0))
+        self.repo.anchor("start", "HEAD", timestamp=ts(0))
+
+    def test_thought_records_reasons_and_recap_exposes_them(self):
+        result = self.repo.supersede_fact(
+            self.v1["assertion"], "infra", _assertion(), timestamp=ts(1))
+        thought = self.repo.show(result["thought"])
+        self.assertEqual(thought["removals"],
+                         [{"assertion": self.v1["assertion"], "reason": "superseded"}])
+        recap = self.repo.recap("start")
+        removed = {row["assertion"]: row["removal_reason"] for row in recap["removed"]}
+        self.assertEqual(removed[self.v1["assertion"]], "superseded")
+        # log rows carry the field verbatim
+        head_entry = self.repo.log()[0]
+        self.assertIn("removals", head_entry)
+
+    def test_staged_flow_records_reasons_too(self):
+        self.repo.add_fact(fact_doc("owner", obj="v2", when=ts(1)))
+        self.repo.remove_fact(self.v1["assertion"], "superseded")
+        tid = self.repo.commit_thought("revise", "tester", timestamp=ts(1))
+        thought = self.repo.show(tid)
+        self.assertEqual(thought["removals"][0]["reason"], "superseded")
+        findings = verify_repository(self.repo)
+        self.assertEqual([f for f in findings if f["severity"] == "error"], [])
+        self.assertEqual([f for f in findings if f["code"] == "removals-incomplete"], [])
+
+    def test_analytics_prefers_recorded_label_over_structure(self):
+        # 'superseded' recorded WITHOUT a same-family replacement: structure
+        # alone would say 'retired'; the recorded label must win (ADR-0014)
+        self.repo.micro_commit_batch(
+            [], [{"id": self.v1["assertion"], "reason": "superseded"}],
+            "external system replaced it", author="tester", timestamp=ts(1))
+        outcomes, _rows, _families = analytics.belief_outcomes(self.repo)
+        self.assertEqual(outcomes[self.v1["assertion"]], "superseded")
+
+    def test_verify_flags_inconsistent_removal_records(self):
+        # hand-write a thought claiming a removal that never happened
+        head = self.repo.status()["thought"]
+        mindset = self.repo.show(head)["mindset"]
+        bogus = self.repo.store.write({
+            "type": "thought",
+            "parents": [head],
+            "mindset": mindset,  # same mindset: nothing was actually removed
+            "operation": "commit",
+            "message": "lying about removals",
+            "author": "tester",
+            "timestamp": ts(2),
+            "removals": [{"assertion": self.v1["assertion"], "reason": "superseded"}],
+        })
+        findings = verify_repository(self.repo)
+        codes = {f["code"] for f in findings if bogus in f["message"]}
+        self.assertIn("removal-not-removed", codes)
+
+    def test_merge_resolution_reasons_recorded(self):
+        # change-delete conflict: main strengthens the claim, side retires it
+        self.repo.branch("side", timestamp=ts(1))
+        _claim, boost = self.repo.add_fact(
+            fact_doc("owner", obj="core", confidence=9900, when=ts(2)))
+        self.repo.commit_thought("boost confidence", "tester", timestamp=ts(2))
+        self.repo.checkout("side", timestamp=ts(3))
+        self.repo.retire_fact([self.v1["assertion"]], "stale", "tester", timestamp=ts(3))
+        self.repo.checkout("main", timestamp=ts(4))
+        self.repo.merge("side", timestamp=ts(5))
+        conflict_claim = self.repo.status()["conflicts"][0]["claim"]
+        self.repo.resolve_conflict(conflict_claim, keep=boost)
+        tid = self.repo.commit_thought("merge side: keep boosted", "tester", timestamp=ts(6))
+        thought = self.repo.show(tid)
+        self.assertEqual(len(thought["parents"]), 2)
+        recorded = {e["assertion"]: e["reason"] for e in thought["removals"]}
+        self.assertEqual(recorded[self.v1["assertion"]], "merge-conflict-resolution")
+        findings = verify_repository(self.repo)
+        self.assertEqual([f for f in findings if f["severity"] == "error"], [])
+
+    def test_schema_rejects_malformed_removals(self):
+        from cogit.objects import validate_object
+        base = {
+            "type": "thought", "parents": [], "mindset": self.repo.show("HEAD")["mindset"],
+            "operation": "commit", "message": "m", "author": "a",
+            "timestamp": ts(3),
+        }
+        for removals in ([],  # empty list
+                         [{"assertion": self.v1["assertion"]}],  # missing reason
+                         [{"assertion": self.v1["assertion"], "reason": ""}],  # empty reason
+                         [{"assertion": "zz", "reason": "r"}]):  # bad oid
+            with self.assertRaises(UserError, msg=repr(removals)):
+                validate_object({**base, "removals": removals})
+        two = sorted([self.v1["assertion"], self.repo.show("HEAD")["mindset"]])
+        unsorted = [{"assertion": two[1], "reason": "r"}, {"assertion": two[0], "reason": "r"}]
+        with self.assertRaises(UserError):
+            validate_object({**base, "removals": unsorted})
+
+
 if __name__ == "__main__":
     unittest.main()

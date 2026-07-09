@@ -149,7 +149,8 @@ def _validate_mindset(obj):
 def _validate_thought(obj):
     _check_keys(
         obj,
-        ("type", "parents", "mindset", "operation", "message", "author", "timestamp"),
+        ("type", "parents", "mindset", "operation", "message", "author", "timestamp",
+         "removals"),
         where="thought",
     )
     parents = _require(obj, "parents")
@@ -165,6 +166,22 @@ def _validate_thought(obj):
     _check_str(_require(obj, "message"), "message")
     _check_str(_require(obj, "author"), "author")
     _check_timestamp(_require(obj, "timestamp"), "timestamp")
+    if "removals" in obj:
+        # ADR-0014: durable removal provenance — optional, additive
+        removals = obj["removals"]
+        if not isinstance(removals, list) or not removals:
+            raise UserError("thought: removals must be a non-empty list when present")
+        seen = []
+        for entry in removals:
+            if not isinstance(entry, dict) or set(entry) != {"assertion", "reason"}:
+                raise UserError("thought: each removal needs exactly {assertion, reason}")
+            _check_oid(entry["assertion"], "removals.assertion")
+            reason = entry["reason"]
+            if not isinstance(reason, str) or not reason:
+                raise UserError("thought: removal reason must be a non-empty string")
+            seen.append(entry["assertion"])
+        if seen != sorted(seen) or len(set(seen)) != len(seen):
+            raise UserError("thought: removals must be sorted by assertion and unique")
 
 
 def _validate_anchor(obj):

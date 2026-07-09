@@ -163,8 +163,8 @@ NEW=$(echo "$ROUT" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["ass
 SHAPE=$($PY facts --subject interop:life --json | $PYBIN -c \
   'import json,sys; r=json.load(sys.stdin)["facts"]; print(len(r), r[0]["object"])')
 [ "$SHAPE" = "1 v2" ] || fail "python sees '$SHAPE' after rust supersede"
-$PY refute-fact "$NEW" --source agent:interop --confidence 9000 --actor py \
-  --asserted-at $TS10 --timestamp $TS10 --json >/dev/null
+REFT=$($PY refute-fact "$NEW" --source agent:interop --confidence 9000 --actor py \
+  --asserted-at $TS10 --timestamp $TS10 --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["thought"])')
 SHAPE=$($RUST facts --subject interop:life --json | $PYBIN -c \
   'import json,sys; r=json.load(sys.stdin)["facts"]; print(len(r), r[0]["negation"])')
 [ "$SHAPE" = "1 True" ] || fail "rust sees '$SHAPE' after python refute"
@@ -174,6 +174,13 @@ $RUST retire-fact "$NEG" --reason "cycle complete" --author rs --timestamp $TS10
 COUNT=$($PY facts --subject interop:life --json | $PYBIN -c \
   'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
 [ "$COUNT" = "0" ] || fail "python still sees $COUNT active after rust retire"
+ok
+
+step "removal provenance agrees across runtimes (ADR-0014)"
+PYP=$($PY recap "$REFT" --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(sorted(r["subject"]+"/"+r["predicate"]+"="+str(r.get("removal_reason")) for r in d["removed"])))')
+RSP=$($RUST recap "$REFT" --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(sorted(r["subject"]+"/"+r["predicate"]+"="+str(r.get("removal_reason")) for r in d["removed"])))')
+[ "$PYP" = "$RSP" ] || fail "removal reasons diverge: $PYP vs $RSP"
+echo "$PYP" | grep -q "cycle complete" || fail "retire reason not recoverable: $PYP"
 ok
 
 step "dump agrees across runtimes (COG-042)"

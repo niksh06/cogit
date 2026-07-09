@@ -506,7 +506,7 @@ impl Repository {
                 "assertions": new_assertions.iter().collect::<Vec<_>>(),
                 "created_at": ts,
             }))?;
-            let thought_oid = self.store.write(&json!({
+            let mut thought = json!({
                 "type": "thought",
                 "parents": parent.iter().cloned().collect::<Vec<_>>(),
                 "mindset": mindset_oid,
@@ -514,7 +514,17 @@ impl Repository {
                 "message": message,
                 "author": author,
                 "timestamp": ts,
-            }))?;
+            });
+            if !removals.is_empty() {
+                // ADR-0014: durable removal provenance on the thought itself
+                let mut entries: Vec<(String, String)> = removals.to_vec();
+                entries.sort();
+                thought["removals"] = json!(entries
+                    .into_iter()
+                    .map(|(assertion, reason)| json!({"assertion": assertion, "reason": reason}))
+                    .collect::<Vec<_>>());
+            }
+            let thought_oid = self.store.write(&thought)?;
             let publish = match &branch {
                 Some(branch) => self
                     .refs
@@ -898,7 +908,7 @@ impl Repository {
                 "merge",
             )
         };
-        let thought_oid = self.store.write(&json!({
+        let mut thought = json!({
             "type": "thought",
             "parents": parents,
             "mindset": mindset_oid,
@@ -906,7 +916,27 @@ impl Repository {
             "message": message,
             "author": author,
             "timestamp": timestamp,
-        }))?;
+        });
+        let recorded: Vec<Value> = {
+            let mut entries: Vec<(String, String)> = index["removed_facts"]
+                .as_array()
+                .expect("removed")
+                .iter()
+                .filter_map(|e| {
+                    Some((e["id"].as_str()?.to_owned(), e["reason"].as_str()?.to_owned()))
+                })
+                .collect();
+            entries.sort();
+            entries
+                .into_iter()
+                .map(|(assertion, reason)| json!({"assertion": assertion, "reason": reason}))
+                .collect()
+        };
+        if !recorded.is_empty() {
+            // ADR-0014: the removal reasons survive the index — on the thought
+            thought["removals"] = json!(recorded);
+        }
+        let thought_oid = self.store.write(&thought)?;
 
         match &branch {
             Some(branch) => {
@@ -1721,6 +1751,7 @@ impl Repository {
             }
         };
         let mut thoughts_out = Vec::new();
+        let mut removal_reasons: BTreeMap<String, String> = BTreeMap::new();
         if from_oid != to_oid {
             let ancestry_to = self.ancestry(&to_oid)?;
             if !ancestry_to.contains_key(&from_oid) {
@@ -1735,6 +1766,16 @@ impl Repository {
             let mut row_cache: BTreeMap<String, Value> = BTreeMap::new();
             for oid in self.topo_oldest_first(&between)? {
                 let t = &between[&oid];
+                // ADR-0014: newest removal reason in the window wins
+                if let Some(entries) = t.get("removals").and_then(Value::as_array) {
+                    for entry in entries {
+                        if let (Some(aid), Some(reason)) =
+                            (entry["assertion"].as_str(), entry["reason"].as_str())
+                        {
+                            removal_reasons.insert(aid.to_owned(), reason.to_owned());
+                        }
+                    }
+                }
                 if let Some(project) = project {
                     // keep only thoughts that changed this project's beliefs
                     let mut ids: Vec<String> = vec![oid.clone()];
@@ -1780,6 +1821,13 @@ impl Repository {
         let mut added: Vec<Value> = to_set.difference(&from_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
         let mut removed: Vec<Value> =
             from_set.difference(&to_set).map(|aid| self.fact_row(aid)).collect::<Result<_>>()?;
+        for row in removed.iter_mut() {
+            let aid = row["assertion"].as_str().unwrap_or("").to_owned();
+            row["removal_reason"] = match removal_reasons.get(&aid) {
+                Some(reason) => json!(reason),
+                None => Value::Null,
+            };
+        }
         if let Some(project) = project {
             added.retain(|row| Self::row_matches(row, None, None, Some(project)));
             removed.retain(|row| Self::row_matches(row, None, None, Some(project)));

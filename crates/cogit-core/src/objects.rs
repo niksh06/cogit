@@ -221,7 +221,7 @@ fn validate_thought(map: &Map<String, Value>) -> Result<()> {
     check_keys(
         map,
         &["type", "parents", "mindset", "operation", "message", "author", "timestamp"],
-        &[],
+        &["removals"],
         "thought",
     )?;
     get_oid_list(map, "parents", false, "thought")?; // semantic order (CQ-006)
@@ -232,7 +232,41 @@ fn validate_thought(map: &Map<String, Value>) -> Result<()> {
     }
     get_str(map, "message", "thought")?;
     get_str(map, "author", "thought")?;
-    get_timestamp(map, "timestamp", "thought")
+    get_timestamp(map, "timestamp", "thought")?;
+    if let Some(removals) = map.get("removals") {
+        // ADR-0014: durable removal provenance — optional, additive
+        let entries = removals
+            .as_array()
+            .filter(|list| !list.is_empty())
+            .ok_or_else(|| {
+                CoreError::User("thought: removals must be a non-empty list when present".into())
+            })?;
+        let mut seen: Vec<String> = Vec::new();
+        for entry in entries {
+            let entry_map = entry.as_object().ok_or_else(|| {
+                CoreError::User("thought: each removal needs exactly {assertion, reason}".into())
+            })?;
+            if entry_map.len() != 2
+                || !entry_map.contains_key("assertion")
+                || !entry_map.contains_key("reason")
+            {
+                return user_err("thought: each removal needs exactly {assertion, reason}");
+            }
+            let assertion = get_oid(entry_map, "assertion", "thought.removals")?;
+            let reason = entry_map.get("reason").and_then(Value::as_str).unwrap_or("");
+            if reason.is_empty() {
+                return user_err("thought: removal reason must be a non-empty string");
+            }
+            seen.push(assertion.to_owned());
+        }
+        let mut sorted = seen.clone();
+        sorted.sort();
+        sorted.dedup();
+        if seen != sorted {
+            return user_err("thought: removals must be sorted by assertion and unique");
+        }
+    }
+    Ok(())
 }
 
 fn validate_anchor(map: &Map<String, Value>) -> Result<()> {

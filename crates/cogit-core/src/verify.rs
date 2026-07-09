@@ -138,6 +138,66 @@ pub fn verify_repository(repo: &Repository) -> Vec<Value> {
         }
     }
 
+    // -- removal provenance consistency (ADR-0014) --------------------------------------
+    let mindset_of = |thought_oid: &str| -> BTreeSet<String> {
+        objects
+            .get(thought_oid)
+            .filter(|t| t["type"].as_str() == Some("thought"))
+            .and_then(|t| objects.get(t["mindset"].as_str().unwrap_or("")))
+            .filter(|m| m["type"].as_str() == Some("mindset"))
+            .map(|m| arr_strings(&m["assertions"]).into_iter().collect())
+            .unwrap_or_default()
+    };
+    for (oid, obj) in &objects {
+        if obj["type"].as_str() != Some("thought") {
+            continue;
+        }
+        let Some(entries) = obj.get("removals").and_then(Value::as_array) else {
+            continue;
+        };
+        let own = mindset_of(oid);
+        let parents = arr_strings(&obj["parents"]);
+        let mut parent_union: BTreeSet<String> = BTreeSet::new();
+        for parent in &parents {
+            parent_union.extend(mindset_of(parent));
+        }
+        let recorded: BTreeSet<String> = entries
+            .iter()
+            .filter_map(|e| e["assertion"].as_str().map(str::to_owned))
+            .collect();
+        for aid in &recorded {
+            if own.contains(aid) {
+                finding(
+                    &mut link_findings,
+                    "error",
+                    "removal-not-removed",
+                    format!("{oid} records removal of {aid} but its mindset still holds it"),
+                );
+            } else if !parent_union.contains(aid) {
+                finding(
+                    &mut link_findings,
+                    "error",
+                    "removal-not-in-parents",
+                    format!("{oid} records removal of {aid} which no parent mindset held"),
+                );
+            }
+        }
+        if parents.len() == 1 {
+            let uncovered = parent_union
+                .difference(&own)
+                .filter(|aid| !recorded.contains(*aid))
+                .count();
+            if uncovered > 0 {
+                finding(
+                    &mut link_findings,
+                    "warning",
+                    "removals-incomplete",
+                    format!("{oid} removed {uncovered} assertion(s) without a recorded reason"),
+                );
+            }
+        }
+    }
+
     // -- contradictory mindsets (warning) ---------------------------------------------
     for (oid, obj) in &objects {
         if obj["type"].as_str() != Some("mindset") {
