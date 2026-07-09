@@ -105,7 +105,7 @@ cargo build
 
 ## Use it from an agent (MCP)
 
-The intended user is an agent. The MCP server exposes the porcelain as 22
+The intended user is an agent. The MCP server exposes the porcelain as 25
 tools (destructive maintenance excluded by design, ADR-0009):
 
 ```sh
@@ -117,7 +117,11 @@ Suggested loop: start a session with `recap` (no arguments — it resumes
 from your newest anchor), record decisions with `add_fact(commit=true)`
 (atomic micro-commits, safe for parallel agents on one journal), `anchor`
 milestones, and when something turns out wrong, `blame_fact` it back to
-the thought that introduced it. What deserves to be a fact — and what does
+the thought that introduced it. When a belief changes state, use the
+atomic lifecycle operations (COG-056): `supersede_fact` (new value, same
+claim family), `refute_fact` (structural negation, invariant 25) and
+`retire_fact` (explicit removal without asserting falsity) — each is one
+all-or-nothing thought. What deserves to be a fact — and what does
 not — is `docs/claim-modeling.md`.
 
 ## Watch a journal (web viewer)

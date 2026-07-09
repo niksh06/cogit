@@ -125,6 +125,55 @@ Rules:
 - A reason is required (`refuted`, `superseded`, or free text).
 - Removing a staged-but-uncommitted assertion unstages it.
 
+### `cogit supersede-fact <assertion-id> --object <v> --source <s> --confidence <bps>` (COG-056)
+
+One atomic thought: removes the ACTIVE target with reason `superseded` and
+asserts a replacement in the SAME claim family.
+
+Rules:
+
+- The target must be active in the current mindset; a stale target (already
+  transitioned by another writer) is a clean `user` error, never a silent
+  apply against newer state.
+- The replacement preserves `kind`, `subject`, `predicate` and `qualifiers`
+  from the target's claim; only the object and the new assertion's
+  provenance (`--source`, `--confidence`, `--actor`, `--premise`,
+  `--asserted-at`) change. Changing the family requires an explicit new
+  fact instead.
+- Publishes via the batch micro-commit (COG-055): bypasses the shared
+  index, refuses while it is non-empty, all-or-nothing under the ref
+  old-target check.
+- Output exposes `old_assertion`, `old_claim`, the new `assertion`/`claim`
+  and the `thought`.
+
+### `cogit refute-fact <assertion-id> --source <s> --confidence <bps>` (COG-056)
+
+One atomic thought: removes EVERY active assertion of the target's claim
+with reason `refuted` and activates an explicit negation of that claim.
+
+Rules:
+
+- The negation claim mirrors the target claim (same kind/subject/
+  predicate/object/qualifiers) with `negates` pointing at it — satisfying
+  invariant 25 by construction.
+- All active assertions of the claim are removed in the same thought; the
+  result never holds a claim and its negation simultaneously.
+- Same atomicity/staleness rules as `supersede-fact`.
+- Output exposes `refuted_claim`, `refuted_assertions`, the `negation`
+  ids and the `thought`.
+
+### `cogit retire-fact <assertion-id>... --reason <text>` (COG-056)
+
+One atomic thought: removes active assertions with an explicit reason,
+WITHOUT asserting falsity — no negation, no replacement implied.
+
+Rules:
+
+- Reason `refuted` is rejected with a pointer to `refute-fact`.
+- Accepts multiple targets; all must be active, all retire together or
+  nothing does.
+- Same atomicity/staleness rules as `supersede-fact`.
+
 ### `cogit commit-thought --message <text> --author <id>`
 
 Creates a mindset and thought from the index, then advances the current ref.

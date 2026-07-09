@@ -301,8 +301,8 @@ class Repository:
         All-or-nothing by construction — either exactly one thought becomes
         reachable or HEAD stays unchanged; the index is only guarded for
         emptiness, never mutated."""
-        if not docs:
-            raise UserError("record: at least one fact is required")
+        if not docs and not removals:
+            raise UserError("record: nothing to record — provide facts and/or removals")
         if not message or not message.strip():
             raise UserError("record: a thought message is required")
         reject_suspected_secrets(message, "record")
@@ -324,7 +324,9 @@ class Repository:
         overlap = sorted(removed_ids & added)
         if overlap:
             raise UserError(f"record: assertion(s) both added and removed: {', '.join(overlap)}")
-        author = author or written[0][2]["actor"]
+        author = author or (written[0][2]["actor"] if written else None)
+        if not author or not author.strip():
+            raise UserError("record: an author is required when the batch has no facts")
         facts_out = [{"claim": claim, "assertion": assertion}
                      for claim, assertion, _a in written]
 
@@ -384,6 +386,113 @@ class Repository:
             raise ConcurrentUpdateError(
                 f"record: ref kept moving during batch commit; giving up after 5 attempts ({last_error})"
             )
+
+    # -- lifecycle porcelain (COG-056) --------------------------------------------
+
+    def _lifecycle_target(self, target: str):
+        """Resolve a lifecycle target: an assertion ACTIVE in the current
+        mindset. The atomic batch re-checks activity under the ref lock; this
+        early check exists to read the claim and fail with a friendly error."""
+        target = self.expand_object_id(target)
+        assertion = self._read_typed(target, "assertion")
+        _branch, parent = self.head_info()
+        active = self._mindset_assertions(parent) if parent else set()
+        if target not in active:
+            raise UserError(
+                f"lifecycle: target assertion {target} is not active in the current mindset"
+            )
+        claim = self._read_typed(assertion["claim"], "claim")
+        return target, assertion, claim
+
+    def supersede_fact(self, target: str, new_object, assertion: dict,
+                       message: str = None, timestamp: str = None):
+        """Replace an active belief in ONE thought (COG-056): remove the
+        target with reason 'superseded' and assert a replacement in the SAME
+        claim family — kind, subject, predicate and qualifiers are preserved;
+        only the object (and the new assertion's provenance) changes."""
+        target, old_assertion, claim = self._lifecycle_target(target)
+        new_claim = {
+            "type": "claim",
+            "kind": claim["kind"],
+            "subject": claim["subject"],
+            "predicate": claim["predicate"],
+            "object": new_object,
+            "qualifiers": dict(claim.get("qualifiers", {})),
+        }
+        doc = {"claim": new_claim, "assertion": assertion}
+        message = message or f"supersede: {claim['subject']} {claim['predicate']}"
+        result = self.micro_commit_batch(
+            [doc], [{"id": target, "reason": "superseded"}], message, timestamp=timestamp
+        )
+        replacement = result["facts"][0]
+        return {
+            "thought": result["thought"],
+            "old_assertion": target,
+            "old_claim": old_assertion["claim"],
+            "assertion": replacement["assertion"],
+            "claim": replacement["claim"],
+        }
+
+    def refute_fact(self, target: str, assertion: dict,
+                    message: str = None, timestamp: str = None):
+        """Structurally refute a claim in ONE thought (COG-056): remove EVERY
+        active assertion of the target's claim with reason 'refuted' and
+        activate an explicit negation of that claim (invariant 25)."""
+        target, old_assertion, claim = self._lifecycle_target(target)
+        claim_oid = old_assertion["claim"]
+        _branch, parent = self.head_info()
+        active = self._mindset_assertions(parent) if parent else set()
+        rivals = sorted(
+            aid for aid in active
+            if self._read_typed(aid, "assertion")["claim"] == claim_oid
+        )
+        negation_claim = {
+            "type": "claim",
+            "kind": claim["kind"],
+            "subject": claim["subject"],
+            "predicate": claim["predicate"],
+            "object": claim["object"],
+            "qualifiers": dict(claim.get("qualifiers", {})),
+            "negates": claim_oid,
+        }
+        doc = {"claim": negation_claim, "assertion": assertion}
+        message = message or f"refute: {claim['subject']} {claim['predicate']}"
+        result = self.micro_commit_batch(
+            [doc], [{"id": aid, "reason": "refuted"} for aid in rivals],
+            message, timestamp=timestamp,
+        )
+        negation = result["facts"][0]
+        return {
+            "thought": result["thought"],
+            "refuted_claim": claim_oid,
+            "refuted_assertions": rivals,
+            "negation": negation,
+        }
+
+    def retire_fact(self, targets: list, reason: str, author: str,
+                    message: str = None, timestamp: str = None):
+        """Retire active beliefs in ONE thought (COG-056): explicit removal
+        with a required reason, WITHOUT asserting falsity — no negation is
+        activated and no replacement is implied."""
+        if not targets:
+            raise UserError("retire-fact: at least one target assertion is required")
+        if not reason or not reason.strip():
+            raise UserError("retire-fact: an explicit reason is required")
+        if reason.strip() == "refuted":
+            raise UserError(
+                "retire-fact: reason 'refuted' asserts falsity — use refute-fact, "
+                "which activates the structural negation (invariant 25)"
+            )
+        resolved = []
+        for target in targets:
+            oid, _assertion, _claim = self._lifecycle_target(target)
+            resolved.append(oid)
+        message = message or f"retire: {len(resolved)} assertion(s) — {reason}"
+        result = self.micro_commit_batch(
+            [], [{"id": oid, "reason": reason} for oid in resolved],
+            message, author=author, timestamp=timestamp,
+        )
+        return {"thought": result["thought"], "retired": resolved, "reason": reason}
 
     def remove_fact(self, assertion_oid: str, reason: str):
         if not is_oid(assertion_oid):

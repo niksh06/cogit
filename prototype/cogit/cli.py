@@ -171,6 +171,77 @@ def cmd_remove_fact(args):
     return 0
 
 
+def _build_lifecycle_assertion(repo, args, command):
+    """Assemble the assertion object for supersede/refute (COG-056)."""
+    missing = [flag for flag, value in
+               (("--source", args.source), ("--confidence", args.confidence)) if value is None]
+    if missing:
+        raise UserError(f"{command}: requires {', '.join(missing)}")
+    source_type, _sep, source_uri = args.source.partition(":")
+    source = {"type": source_type}
+    if source_uri:
+        source["uri"] = source_uri
+    assertion = {
+        "type": "assertion",
+        "status": "asserted",
+        "source": source,
+        "confidence_bps": args.confidence,
+        "asserted_at": args.asserted_at or now_utc(),
+        "actor": args.actor,
+        "method": {"type": args.method},
+    }
+    if args.premises:
+        assertion["premises"] = sorted({repo.expand_object_id(p) for p in args.premises})
+    return assertion
+
+
+def cmd_supersede_fact(args):
+    repo = _open_repo(args)
+    if args.object_value is None and args.object_json is None:
+        raise UserError("supersede-fact: provide the replacement --object (or --object-json)")
+    if args.object_value is not None and args.object_json is not None:
+        raise UserError("supersede-fact: use either --object or --object-json, not both")
+    new_object = args.object_value if args.object_value is not None else parse_json(args.object_json)
+    assertion = _build_lifecycle_assertion(repo, args, "supersede-fact")
+    result = repo.supersede_fact(args.assertion_id, new_object, assertion,
+                                 message=args.message, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    print(f"superseded {result['old_assertion']}")
+    print(f"asserted   {result['assertion']}")
+    print(f"committed  {result['thought']}")
+    return 0
+
+
+def cmd_refute_fact(args):
+    repo = _open_repo(args)
+    assertion = _build_lifecycle_assertion(repo, args, "refute-fact")
+    result = repo.refute_fact(args.assertion_id, assertion,
+                              message=args.message, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    for oid in result["refuted_assertions"]:
+        print(f"refuted   {oid}")
+    print(f"negation  {result['negation']['assertion']}")
+    print(f"committed {result['thought']}")
+    return 0
+
+
+def cmd_retire_fact(args):
+    repo = _open_repo(args)
+    result = repo.retire_fact(args.assertion_ids, args.reason, args.author,
+                              message=args.message, timestamp=args.timestamp)
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    for oid in result["retired"]:
+        print(f"retired   {oid}")
+    print(f"committed {result['thought']}")
+    return 0
+
+
 def cmd_commit_thought(args):
     repo = _open_repo(args)
     thought_oid = repo.commit_thought(args.message, args.author, args.timestamp)
@@ -670,6 +741,45 @@ def build_parser():
     p.add_argument("--reason", required=True)
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_remove_fact)
+
+    def lifecycle_assertion_flags(p):
+        p.add_argument("--source", help="source as type[:uri], e.g. agent:session-x")
+        p.add_argument("--confidence", type=int, help="confidence in basis points (0-10000)")
+        p.add_argument("--actor", default="agent", help="asserting actor")
+        p.add_argument("--method", default="cli", help="method type")
+        p.add_argument("--asserted-at", dest="asserted_at", help="ISO-8601 UTC override (default: now)")
+        p.add_argument("--premise", action="append", dest="premises",
+                       help="assertion id the new belief derives from (repeatable, ADR-0013)")
+        p.add_argument("--message", "-m", help="thought message (default: derived)")
+        p.add_argument("--timestamp", help="thought timestamp (tests)")
+        p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("supersede-fact",
+                       help="one atomic thought: retire the target with reason 'superseded' "
+                            "and assert a replacement in the same claim family (COG-056)")
+    p.add_argument("assertion_id", help="active assertion to supersede")
+    p.add_argument("--object", dest="object_value", help="replacement object (string)")
+    p.add_argument("--object-json", help="replacement object as JSON (bool/int/string)")
+    lifecycle_assertion_flags(p)
+    p.set_defaults(func=cmd_supersede_fact)
+
+    p = sub.add_parser("refute-fact",
+                       help="one atomic thought: remove ALL active assertions of the target's "
+                            "claim with reason 'refuted' and activate its negation (COG-056)")
+    p.add_argument("assertion_id", help="active assertion whose claim is being refuted")
+    lifecycle_assertion_flags(p)
+    p.set_defaults(func=cmd_refute_fact)
+
+    p = sub.add_parser("retire-fact",
+                       help="one atomic thought: remove active assertions with an explicit "
+                            "reason, without asserting falsity (COG-056)")
+    p.add_argument("assertion_ids", nargs="+", help="active assertion(s) to retire")
+    p.add_argument("--reason", required=True, help="why (not 'refuted' — use refute-fact)")
+    p.add_argument("--author", default="agent", help="thought author")
+    p.add_argument("--message", "-m", help="thought message (default: derived)")
+    p.add_argument("--timestamp", help="thought timestamp (tests)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_retire_fact)
 
     p = sub.add_parser("commit-thought", help="commit staged facts as a thought")
     p.add_argument("--message", "-m", required=True)

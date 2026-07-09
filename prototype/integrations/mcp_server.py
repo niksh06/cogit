@@ -162,6 +162,65 @@ TOOLS = [
         ),
     },
     {
+        "name": "supersede_fact",
+        "description": (
+            "Atomic lifecycle transition (COG-056): remove the ACTIVE target assertion with "
+            "reason 'superseded' and assert a replacement in the SAME claim family (kind/"
+            "subject/predicate/qualifiers preserved, only the object changes) — ONE thought, "
+            "all-or-nothing. Stale target -> clean error."
+        ),
+        "inputSchema": _schema(
+            {
+                "assertion_id": OID,
+                "object": {"type": ["string", "integer", "boolean"],
+                           "description": "replacement value"},
+                "source": {"type": "string", "description": "type[:uri]"},
+                "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+                "actor": {"type": "string", "description": "default: per-session instance id"},
+                "premises": {"type": "array", "items": OID},
+                "message": {"type": "string"},
+            },
+            required=("assertion_id", "object", "source", "confidence_bps"),
+        ),
+    },
+    {
+        "name": "refute_fact",
+        "description": (
+            "Atomic structural refutation (COG-056): remove EVERY active assertion of the "
+            "target's claim with reason 'refuted' and activate an explicit negation of that "
+            "claim (invariant 25) — ONE thought, all-or-nothing. Prefer this over prose "
+            "'REFUTE' markers: analytics only sees structural negations."
+        ),
+        "inputSchema": _schema(
+            {
+                "assertion_id": OID,
+                "source": {"type": "string", "description": "type[:uri] backing the refutation"},
+                "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+                "actor": {"type": "string", "description": "default: per-session instance id"},
+                "premises": {"type": "array", "items": OID},
+                "message": {"type": "string"},
+            },
+            required=("assertion_id", "source", "confidence_bps"),
+        ),
+    },
+    {
+        "name": "retire_fact",
+        "description": (
+            "Atomic retirement (COG-056): remove active assertion(s) with an explicit reason "
+            "WITHOUT asserting falsity — no negation, no replacement implied. ONE thought. "
+            "Reason 'refuted' is rejected: use refute_fact."
+        ),
+        "inputSchema": _schema(
+            {
+                "assertion_ids": {"type": "array", "minItems": 1, "items": OID},
+                "reason": {"type": "string"},
+                "author": {"type": "string", "description": "default: per-session instance id"},
+                "message": {"type": "string"},
+            },
+            required=("assertion_ids", "reason"),
+        ),
+    },
+    {
         "name": "dump",
         "description": (
             "One-call reader surface (COG-042): active facts (negation-explicit), first "
@@ -366,6 +425,58 @@ class CogitTools:
                 for pos, fact in enumerate(facts)]
         return self.repo.micro_commit_batch(
             docs, prepared, message, author=args.get("author", INSTANCE_ACTOR))
+
+    def _lifecycle_assertion(self, args, where):
+        """Assertion object for supersede/refute (COG-056), validated up front."""
+        if not isinstance(args.get("source"), str) or not args["source"]:
+            raise CogitError(f"{where}: 'source' must be a non-empty string 'type[:uri]'")
+        if "confidence_bps" not in args:
+            raise CogitError(f"{where}: 'confidence_bps' is required")
+        source_type, _sep, source_uri = args["source"].partition(":")
+        source = {"type": source_type}
+        if source_uri:
+            source["uri"] = source_uri
+        assertion = {
+            "type": "assertion",
+            "status": "asserted",
+            "source": source,
+            "confidence_bps": args["confidence_bps"],
+            "asserted_at": _now(),
+            "actor": args.get("actor", INSTANCE_ACTOR),
+            "method": {"type": args.get("method", "mcp")},
+        }
+        if args.get("premises"):
+            if not isinstance(args["premises"], list):
+                raise CogitError(f"{where}: 'premises' must be an array of assertion ids")
+            assertion["premises"] = sorted(
+                {self.repo.expand_object_id(p) for p in args["premises"]})
+        return assertion
+
+    def tool_supersede_fact(self, args):
+        if not isinstance(args.get("assertion_id"), str):
+            raise CogitError("supersede_fact: 'assertion_id' is required")
+        if "object" not in args:
+            raise CogitError("supersede_fact: replacement 'object' is required")
+        assertion = self._lifecycle_assertion(args, "supersede_fact")
+        return self.repo.supersede_fact(args["assertion_id"], args["object"], assertion,
+                                        message=args.get("message"))
+
+    def tool_refute_fact(self, args):
+        if not isinstance(args.get("assertion_id"), str):
+            raise CogitError("refute_fact: 'assertion_id' is required")
+        assertion = self._lifecycle_assertion(args, "refute_fact")
+        return self.repo.refute_fact(args["assertion_id"], assertion,
+                                     message=args.get("message"))
+
+    def tool_retire_fact(self, args):
+        ids = args.get("assertion_ids")
+        if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+            raise CogitError("retire_fact: 'assertion_ids' must be a non-empty array of strings")
+        if not isinstance(args.get("reason"), str) or not args["reason"].strip():
+            raise CogitError("retire_fact: a non-empty 'reason' is required")
+        return self.repo.retire_fact(ids, args["reason"],
+                                     args.get("author", INSTANCE_ACTOR),
+                                     message=args.get("message"))
 
     def tool_remove_fact(self, args):
         oid = self.repo.expand_object_id(args["assertion_id"])

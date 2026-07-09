@@ -236,6 +236,37 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error)
         self.assertEqual(log["thoughts"][0]["id"], batch["thought"])
 
+    def test_lifecycle_tools_over_mcp(self):
+        # COG-056: supersede -> refute -> retire, each ONE atomic thought
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, v1 = self.client.call_tool("add_fact", {**self.OK_FACT, "commit": True})
+        self.assertFalse(is_error, v1)
+        is_error, sup = self.client.call_tool("supersede_fact", {
+            "assertion_id": v1["assertion"], "object": "v2",
+            "source": "agent:test", "confidence_bps": 9100,
+        })
+        self.assertFalse(is_error, sup)
+        self.assertEqual(sup["old_assertion"], v1["assertion"])
+        self.assertEqual(sup["old_claim"], v1["claim"])
+        is_error, ref = self.client.call_tool("refute_fact", {
+            "assertion_id": sup["assertion"], "source": "tool:audit", "confidence_bps": 9800,
+        })
+        self.assertFalse(is_error, ref)
+        self.assertEqual(ref["refuted_assertions"], [sup["assertion"]])
+        is_error, ret = self.client.call_tool("retire_fact", {
+            "assertion_ids": [ref["negation"]["assertion"]], "reason": "scope moved",
+        })
+        self.assertFalse(is_error, ret)
+        is_error, facts = self.client.call_tool("facts")
+        self.assertFalse(is_error)
+        self.assertEqual(facts["facts"], [])
+        # reason 'refuted' is redirected to the structural operation
+        is_error, message = self.client.call_tool("retire_fact", {
+            "assertion_ids": [v1["assertion"]], "reason": "refuted",
+        })
+        self.assertTrue(is_error)
+        self.assertIn("refute", message)
+
     def test_unexpected_exceptions_are_sanitized_not_fatal(self):
         # COG-055: non-CogitError bugs must not kill the stdio loop or echo payloads
         self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})

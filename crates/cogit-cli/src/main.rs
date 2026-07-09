@@ -96,6 +96,75 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// one atomic thought: retire the target with reason 'superseded' and assert a
+    /// replacement in the same claim family (COG-056)
+    SupersedeFact {
+        /// active assertion to supersede
+        assertion_id: String,
+        #[arg(long = "object")]
+        object_value: Option<String>,
+        #[arg(long = "object-json")]
+        object_json: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        confidence: Option<i64>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+        #[arg(long, default_value = "cli")]
+        method: String,
+        #[arg(long = "asserted-at")]
+        asserted_at: Option<String>,
+        #[arg(long = "premise")]
+        premises: Vec<String>,
+        #[arg(long, short)]
+        message: Option<String>,
+        #[arg(long)]
+        timestamp: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// one atomic thought: remove ALL active assertions of the target's claim with
+    /// reason 'refuted' and activate its negation (COG-056)
+    RefuteFact {
+        /// active assertion whose claim is being refuted
+        assertion_id: String,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        confidence: Option<i64>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+        #[arg(long, default_value = "cli")]
+        method: String,
+        #[arg(long = "asserted-at")]
+        asserted_at: Option<String>,
+        #[arg(long = "premise")]
+        premises: Vec<String>,
+        #[arg(long, short)]
+        message: Option<String>,
+        #[arg(long)]
+        timestamp: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// one atomic thought: remove active assertions with an explicit reason,
+    /// without asserting falsity (COG-056)
+    RetireFact {
+        /// active assertion(s) to retire
+        #[arg(required = true)]
+        assertion_ids: Vec<String>,
+        #[arg(long)]
+        reason: String,
+        #[arg(long, default_value = "agent")]
+        author: String,
+        #[arg(long, short)]
+        message: Option<String>,
+        #[arg(long)]
+        timestamp: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// commit staged facts as a thought
     CommitThought {
         #[arg(long, short)]
@@ -323,6 +392,57 @@ fn load_json_arg(value: &str) -> Result<Value> {
     Err(CoreError::User(format!(
         "'{value}' is neither a JSON object nor an existing file"
     )))
+}
+
+/// Assertion object for supersede-fact / refute-fact (COG-056).
+#[allow(clippy::too_many_arguments)]
+fn build_lifecycle_assertion(
+    repo: &Repository,
+    source: &Option<String>,
+    confidence: Option<i64>,
+    actor: &str,
+    method: &str,
+    asserted_at: &Option<String>,
+    premises: &[String],
+    command: &str,
+) -> Result<Value> {
+    let mut missing: Vec<&str> = Vec::new();
+    if source.is_none() {
+        missing.push("--source");
+    }
+    if confidence.is_none() {
+        missing.push("--confidence");
+    }
+    if !missing.is_empty() {
+        return Err(CoreError::User(format!("{command}: requires {}", missing.join(", "))));
+    }
+    let (source_type, source_uri) = source.as_ref().unwrap().split_once(':').map_or_else(
+        || (source.clone().unwrap(), None),
+        |(t, u)| (t.to_owned(), Some(u.to_owned())),
+    );
+    let mut source_obj = json!({"type": source_type});
+    if let Some(uri) = source_uri {
+        source_obj["uri"] = json!(uri);
+    }
+    let mut assertion = json!({
+        "type": "assertion",
+        "status": "asserted",
+        "source": source_obj,
+        "confidence_bps": confidence.unwrap(),
+        "asserted_at": asserted_at.clone().unwrap_or_else(now_utc),
+        "actor": actor,
+        "method": {"type": method},
+    });
+    if !premises.is_empty() {
+        let mut expanded = premises
+            .iter()
+            .map(|p| repo.expand_object_id(p))
+            .collect::<Result<Vec<_>>>()?;
+        expanded.sort();
+        expanded.dedup();
+        assertion["premises"] = json!(expanded);
+    }
+    Ok(assertion)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -576,6 +696,79 @@ fn run(cli: Cli) -> Result<i32> {
                 println!("{}", json!({"outcome": outcome, "assertion": oid}));
             } else {
                 println!("{outcome}  {oid}");
+            }
+            Ok(0)
+        }
+        Cmd::SupersedeFact {
+            assertion_id, object_value, object_json, source, confidence, actor, method,
+            asserted_at, premises, message, timestamp, json,
+        } => {
+            let repo = open_repo(&cli.repo)?;
+            if object_value.is_none() && object_json.is_none() {
+                return Err(CoreError::User(
+                    "supersede-fact: provide the replacement --object (or --object-json)".into(),
+                ));
+            }
+            if object_value.is_some() && object_json.is_some() {
+                return Err(CoreError::User(
+                    "supersede-fact: use either --object or --object-json, not both".into(),
+                ));
+            }
+            let new_object = match &object_json {
+                Some(text) => parse_json(text)?,
+                None => json!(object_value.clone().unwrap()),
+            };
+            let assertion = build_lifecycle_assertion(
+                &repo, &source, confidence, &actor, &method, &asserted_at, &premises,
+                "supersede-fact",
+            )?;
+            let result = repo.supersede_fact(
+                &assertion_id, &new_object, &assertion, message.as_deref(), timestamp.as_deref(),
+            )?;
+            if json {
+                println!("{result}");
+            } else {
+                println!("superseded {}", result["old_assertion"].as_str().unwrap_or(""));
+                println!("asserted   {}", result["assertion"].as_str().unwrap_or(""));
+                println!("committed  {}", result["thought"].as_str().unwrap_or(""));
+            }
+            Ok(0)
+        }
+        Cmd::RefuteFact {
+            assertion_id, source, confidence, actor, method, asserted_at, premises, message,
+            timestamp, json,
+        } => {
+            let repo = open_repo(&cli.repo)?;
+            let assertion = build_lifecycle_assertion(
+                &repo, &source, confidence, &actor, &method, &asserted_at, &premises,
+                "refute-fact",
+            )?;
+            let result = repo.refute_fact(
+                &assertion_id, &assertion, message.as_deref(), timestamp.as_deref(),
+            )?;
+            if json {
+                println!("{result}");
+            } else {
+                for oid in result["refuted_assertions"].as_array().cloned().unwrap_or_default() {
+                    println!("refuted   {}", oid.as_str().unwrap_or(""));
+                }
+                println!("negation  {}", result["negation"]["assertion"].as_str().unwrap_or(""));
+                println!("committed {}", result["thought"].as_str().unwrap_or(""));
+            }
+            Ok(0)
+        }
+        Cmd::RetireFact { assertion_ids, reason, author, message, timestamp, json } => {
+            let repo = open_repo(&cli.repo)?;
+            let result = repo.retire_fact(
+                &assertion_ids, &reason, &author, message.as_deref(), timestamp.as_deref(),
+            )?;
+            if json {
+                println!("{result}");
+            } else {
+                for oid in result["retired"].as_array().cloned().unwrap_or_default() {
+                    println!("retired   {}", oid.as_str().unwrap_or(""));
+                }
+                println!("committed {}", result["thought"].as_str().unwrap_or(""));
             }
             Ok(0)
         }

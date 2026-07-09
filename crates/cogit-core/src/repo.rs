@@ -403,6 +403,302 @@ impl Repository {
         )))
     }
 
+    /// Record N beliefs and M removals as ONE thought WITHOUT touching the
+    /// shared index (COG-055): validate everything and write the immutable
+    /// fact objects first, then publish mindset = parent - removed + added
+    /// via the COG-035 ref old-target check with retry. All-or-nothing by
+    /// construction.
+    pub fn micro_commit_batch(
+        &self,
+        docs: &[Value],
+        removals: &[(String, String)],
+        message: &str,
+        author: Option<&str>,
+        timestamp: Option<&str>,
+    ) -> Result<Value> {
+        if docs.is_empty() && removals.is_empty() {
+            return user_err("record: nothing to record — provide facts and/or removals");
+        }
+        if message.trim().is_empty() {
+            return user_err("record: a thought message is required");
+        }
+        reject_suspected_secrets(&json!(message), "record")?;
+        let mut removed_ids: BTreeSet<String> = BTreeSet::new();
+        for (oid, reason) in removals {
+            if !is_oid(oid) {
+                return user_err(format!("record: invalid removal assertion id '{oid}'"));
+            }
+            if reason.trim().is_empty() {
+                return user_err(format!("record: removal {oid} requires an explicit reason"));
+            }
+            reject_suspected_secrets(&json!(reason), "record")?;
+            if !removed_ids.insert(oid.clone()) {
+                return user_err("record: duplicate removal targets");
+            }
+        }
+        let mut written = Vec::new();
+        for doc in docs {
+            written.push(self.write_fact_objects(doc)?);
+        }
+        let added: BTreeSet<String> = written.iter().map(|(_c, a, _v)| a.clone()).collect();
+        let overlap: Vec<String> = removed_ids.intersection(&added).cloned().collect();
+        if !overlap.is_empty() {
+            return user_err(format!(
+                "record: assertion(s) both added and removed: {}",
+                overlap.join(", ")
+            ));
+        }
+        let author = match author {
+            Some(a) if !a.trim().is_empty() => a.to_owned(),
+            _ => written
+                .first()
+                .and_then(|(_c, _a, assertion)| assertion["actor"].as_str())
+                .unwrap_or("")
+                .to_owned(),
+        };
+        if author.trim().is_empty() {
+            return user_err("record: an author is required when the batch has no facts");
+        }
+        let facts_out: Vec<Value> = written
+            .iter()
+            .map(|(c, a, _v)| json!({"claim": c, "assertion": a}))
+            .collect();
+
+        let _lock = IndexLock::acquire(&self.cogit_dir, LOCK_TIMEOUT)?;
+        if !index_is_empty(&load_index(&self.cogit_dir)?) {
+            return user_err(
+                "record: refuses with a non-empty index (staged facts, removals, conflicts, \
+                 or merge in progress) — a batch must not absorb or invalidate staged work",
+            );
+        }
+        let mut last_error = String::new();
+        for _attempt in 0..5 {
+            let (branch, parent) = self.head_info()?;
+            let base_set = self.mindset_assertions(parent.as_deref())?;
+            let missing: Vec<String> = removed_ids.difference(&base_set).cloned().collect();
+            if !missing.is_empty() {
+                return user_err(format!(
+                    "record: removal target(s) not active in the current mindset: {}",
+                    missing.join(", ")
+                ));
+            }
+            let mut new_assertions: BTreeSet<String> =
+                base_set.difference(&removed_ids).cloned().collect();
+            new_assertions.extend(added.iter().cloned());
+            if new_assertions == base_set {
+                return Ok(json!({
+                    "thought": parent,
+                    "facts": facts_out,
+                    "removed": [],
+                    "already_active": true,
+                }));
+            }
+            let mut batch_index = empty_index();
+            batch_index["staged_facts"] = json!(added.iter().collect::<Vec<_>>());
+            batch_index["removed_facts"] = json!(removals
+                .iter()
+                .map(|(oid, reason)| json!({"id": oid, "reason": reason}))
+                .collect::<Vec<_>>());
+            self.check_negation_consistency(&new_assertions, &batch_index)?;
+            let ts = timestamp.map(str::to_owned).unwrap_or_else(now_utc);
+            let mindset_oid = self.store.write(&json!({
+                "type": "mindset",
+                "assertions": new_assertions.iter().collect::<Vec<_>>(),
+                "created_at": ts,
+            }))?;
+            let thought_oid = self.store.write(&json!({
+                "type": "thought",
+                "parents": parent.iter().cloned().collect::<Vec<_>>(),
+                "mindset": mindset_oid,
+                "operation": "commit",
+                "message": message,
+                "author": author,
+                "timestamp": ts,
+            }))?;
+            let publish = match &branch {
+                Some(branch) => self
+                    .refs
+                    .update_ref(branch, &thought_oid, parent.as_deref(), &author, "commit", message, &ts)
+                    .and_then(|_| {
+                        self.refs.append_reflog(
+                            "HEAD", parent.as_deref(), &thought_oid, &author, "commit", message, &ts,
+                        )
+                    }),
+                None => self.refs.write_head(
+                    &thought_oid, parent.as_deref(), &author, "commit", message, &ts, parent.as_deref(),
+                ),
+            };
+            match publish {
+                Ok(()) => {
+                    return Ok(json!({
+                        "thought": thought_oid,
+                        "facts": facts_out,
+                        "removed": removed_ids.iter().collect::<Vec<_>>(),
+                        "already_active": false,
+                    }))
+                }
+                Err(CoreError::Concurrent(msg)) => last_error = msg, // recompute from new tip
+                Err(other) => return Err(other),
+            }
+        }
+        Err(CoreError::Concurrent(format!(
+            "record: ref kept moving during batch commit; giving up after 5 attempts ({last_error})"
+        )))
+    }
+
+    // -- lifecycle porcelain (COG-056) ---------------------------------------------------
+
+    /// Resolve a lifecycle target: an assertion ACTIVE in the current mindset.
+    fn lifecycle_target(&self, target: &str) -> Result<(String, Value, Value)> {
+        let target = self.expand_object_id(target)?;
+        let assertion = self.read_typed(&target, "assertion")?;
+        let (_branch, parent) = self.head_info()?;
+        let active = self.mindset_assertions(parent.as_deref())?;
+        if !active.contains(&target) {
+            return user_err(format!(
+                "lifecycle: target assertion {target} is not active in the current mindset"
+            ));
+        }
+        let claim = self.read_typed(assertion["claim"].as_str().unwrap_or(""), "claim")?;
+        Ok((target, assertion, claim))
+    }
+
+    /// One atomic thought: remove the target with reason 'superseded' and
+    /// assert a replacement in the SAME claim family (COG-056).
+    pub fn supersede_fact(
+        &self,
+        target: &str,
+        new_object: &Value,
+        assertion: &Value,
+        message: Option<&str>,
+        timestamp: Option<&str>,
+    ) -> Result<Value> {
+        let (target, old_assertion, claim) = self.lifecycle_target(target)?;
+        let new_claim = json!({
+            "type": "claim",
+            "kind": claim["kind"],
+            "subject": claim["subject"],
+            "predicate": claim["predicate"],
+            "object": new_object,
+            "qualifiers": claim.get("qualifiers").cloned().unwrap_or_else(|| json!({})),
+        });
+        let doc = json!({"claim": new_claim, "assertion": assertion});
+        let message = message.map(str::to_owned).unwrap_or_else(|| {
+            format!(
+                "supersede: {} {}",
+                claim["subject"].as_str().unwrap_or(""),
+                claim["predicate"].as_str().unwrap_or("")
+            )
+        });
+        let result = self.micro_commit_batch(
+            &[doc],
+            &[(target.clone(), "superseded".to_owned())],
+            &message,
+            None,
+            timestamp,
+        )?;
+        Ok(json!({
+            "thought": result["thought"],
+            "old_assertion": target,
+            "old_claim": old_assertion["claim"],
+            "assertion": result["facts"][0]["assertion"],
+            "claim": result["facts"][0]["claim"],
+        }))
+    }
+
+    /// One atomic thought: remove EVERY active assertion of the target's
+    /// claim with reason 'refuted' and activate its negation (COG-056).
+    pub fn refute_fact(
+        &self,
+        target: &str,
+        assertion: &Value,
+        message: Option<&str>,
+        timestamp: Option<&str>,
+    ) -> Result<Value> {
+        let (_target, old_assertion, claim) = self.lifecycle_target(target)?;
+        let claim_oid = old_assertion["claim"].as_str().unwrap_or("").to_owned();
+        let (_branch, parent) = self.head_info()?;
+        let active = self.mindset_assertions(parent.as_deref())?;
+        let mut rivals = Vec::new();
+        for aid in &active {
+            let rival = self.read_typed(aid, "assertion")?;
+            if rival["claim"].as_str() == Some(claim_oid.as_str()) {
+                rivals.push(aid.clone());
+            }
+        }
+        rivals.sort();
+        let negation_claim = json!({
+            "type": "claim",
+            "kind": claim["kind"],
+            "subject": claim["subject"],
+            "predicate": claim["predicate"],
+            "object": claim["object"],
+            "qualifiers": claim.get("qualifiers").cloned().unwrap_or_else(|| json!({})),
+            "negates": claim_oid,
+        });
+        let doc = json!({"claim": negation_claim, "assertion": assertion});
+        let message = message.map(str::to_owned).unwrap_or_else(|| {
+            format!(
+                "refute: {} {}",
+                claim["subject"].as_str().unwrap_or(""),
+                claim["predicate"].as_str().unwrap_or("")
+            )
+        });
+        let removals: Vec<(String, String)> = rivals
+            .iter()
+            .map(|aid| (aid.clone(), "refuted".to_owned()))
+            .collect();
+        let result = self.micro_commit_batch(&[doc], &removals, &message, None, timestamp)?;
+        Ok(json!({
+            "thought": result["thought"],
+            "refuted_claim": claim_oid,
+            "refuted_assertions": rivals,
+            "negation": result["facts"][0],
+        }))
+    }
+
+    /// One atomic thought: remove active assertions with an explicit reason,
+    /// WITHOUT asserting falsity (COG-056).
+    pub fn retire_fact(
+        &self,
+        targets: &[String],
+        reason: &str,
+        author: &str,
+        message: Option<&str>,
+        timestamp: Option<&str>,
+    ) -> Result<Value> {
+        if targets.is_empty() {
+            return user_err("retire-fact: at least one target assertion is required");
+        }
+        if reason.trim().is_empty() {
+            return user_err("retire-fact: an explicit reason is required");
+        }
+        if reason.trim() == "refuted" {
+            return user_err(
+                "retire-fact: reason 'refuted' asserts falsity — use refute-fact, \
+                 which activates the structural negation (invariant 25)",
+            );
+        }
+        let mut resolved = Vec::new();
+        for target in targets {
+            let (oid, _assertion, _claim) = self.lifecycle_target(target)?;
+            resolved.push(oid);
+        }
+        let message = message
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("retire: {} assertion(s) — {reason}", resolved.len()));
+        let removals: Vec<(String, String)> = resolved
+            .iter()
+            .map(|oid| (oid.clone(), reason.to_owned()))
+            .collect();
+        let result = self.micro_commit_batch(&[], &removals, &message, Some(author), timestamp)?;
+        Ok(json!({
+            "thought": result["thought"],
+            "retired": resolved,
+            "reason": reason,
+        }))
+    }
+
     pub fn remove_fact(&self, assertion_oid: &str, reason: &str) -> Result<&'static str> {
         if !is_oid(assertion_oid) {
             return user_err(format!("remove-fact: invalid assertion id '{assertion_oid}'"));

@@ -300,3 +300,73 @@ fn concurrent_ref_update_rejected() {
         .unwrap_err();
     assert!(matches!(err, CoreError::Concurrent(_)));
 }
+
+#[test]
+fn lifecycle_supersede_refute_retire_atomic() {
+    let (_dir, repo) = make_repo();
+    let v1 = repo
+        .micro_commit(&fact_doc("owner", 9000), None, None, Some(&ts(0)))
+        .unwrap();
+    let a1 = v1["assertion"].as_str().unwrap().to_owned();
+
+    // supersede: one thought, same family, only replacement active
+    let assertion = json!({
+        "type": "assertion", "status": "asserted",
+        "source": {"type": "agent", "uri": "lifecycle-test"},
+        "confidence_bps": 9100, "asserted_at": ts(1),
+        "actor": "tester", "method": {"type": "fixture"},
+    });
+    let before = repo.log(None).unwrap().len();
+    let superseded = repo
+        .supersede_fact(&a1, &json!("infra"), &assertion, None, Some(&ts(1)))
+        .unwrap();
+    assert_eq!(repo.log(None).unwrap().len(), before + 1);
+    assert_eq!(superseded["old_assertion"].as_str(), Some(a1.as_str()));
+    let rows = repo.facts(None, None, None, None).unwrap();
+    let facts = rows["facts"].as_array().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0]["object"], json!("infra"));
+    assert_eq!(facts[0]["predicate"], json!("owner"));
+
+    // stale target: the superseded assertion cannot be transitioned again
+    let stale = repo.supersede_fact(&a1, &json!("late"), &assertion, None, Some(&ts(2)));
+    assert!(matches!(stale, Err(CoreError::User(ref m)) if m.contains("not active")));
+
+    // refute: negation activates, target claim's assertions all removed
+    let a2 = superseded["assertion"].as_str().unwrap().to_owned();
+    let refutation = json!({
+        "type": "assertion", "status": "asserted",
+        "source": {"type": "tool", "uri": "audit"},
+        "confidence_bps": 9800, "asserted_at": ts(3),
+        "actor": "tester", "method": {"type": "fixture"},
+    });
+    let refuted = repo.refute_fact(&a2, &refutation, None, Some(&ts(3))).unwrap();
+    assert_eq!(refuted["refuted_assertions"], json!([a2]));
+    let rows = repo.facts(None, None, None, None).unwrap();
+    let facts = rows["facts"].as_array().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0]["negation"], json!(true));
+    let findings = verify_repository(&repo);
+    let errors: Vec<&Value> = findings
+        .iter()
+        .filter(|f| f["severity"] == "error")
+        .collect();
+    assert!(errors.is_empty(), "invariant 25 must hold: {errors:?}");
+
+    // retire: explicit reason, no negation; 'refuted' reason redirected
+    let neg = refuted["negation"]["assertion"].as_str().unwrap().to_owned();
+    let err = repo.retire_fact(std::slice::from_ref(&neg), "refuted", "tester", None, Some(&ts(4)));
+    assert!(matches!(err, Err(CoreError::User(ref m)) if m.contains("refute-fact")));
+    let retired = repo
+        .retire_fact(&[neg], "scope moved", "tester", None, Some(&ts(4)))
+        .unwrap();
+    assert_eq!(retired["reason"], json!("scope moved"));
+    let rows = repo.facts(None, None, None, None).unwrap();
+    assert_eq!(rows["facts"].as_array().unwrap().len(), 0);
+
+    // batch with a dirty index is refused and preserves the staging session
+    repo.add_fact(&fact_doc("staged", 8000)).unwrap();
+    let blocked = repo.supersede_fact(&a1, &json!("x"), &assertion, None, Some(&ts(5)));
+    assert!(matches!(blocked, Err(CoreError::User(ref m)) if m.contains("not active")
+        || m.contains("non-empty index")));
+}

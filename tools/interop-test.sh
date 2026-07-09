@@ -149,6 +149,33 @@ RSP=$($RUST recap --project interop --json | $PYBIN -c 'import json,sys; d=json.
 [ "$PYP" = "1 0 1" ] || fail "unexpected scoped recap shape: $PYP"
 ok
 
+step "lifecycle cycle crosses runtimes (COG-056)"
+TS10=2026-07-02T20:00:10Z
+OUT=$($PY add-fact --kind agent_decision --subject interop:life --predicate state \
+  --object v1 --source agent:interop --confidence 8000 --actor py \
+  --asserted-at $TS10 --project interop --commit --timestamp $TS10 --json)
+LA=$(echo "$OUT" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["assertion"])')
+ROUT=$($RUST supersede-fact "$LA" --object v2 --source agent:interop --confidence 8500 \
+  --actor rs --asserted-at $TS10 --timestamp $TS10 --json)
+OLD=$(echo "$ROUT" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["old_assertion"])')
+NEW=$(echo "$ROUT" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["assertion"])')
+[ "$OLD" = "$LA" ] || fail "rust supersede targeted $OLD, expected $LA"
+SHAPE=$($PY facts --subject interop:life --json | $PYBIN -c \
+  'import json,sys; r=json.load(sys.stdin)["facts"]; print(len(r), r[0]["object"])')
+[ "$SHAPE" = "1 v2" ] || fail "python sees '$SHAPE' after rust supersede"
+$PY refute-fact "$NEW" --source agent:interop --confidence 9000 --actor py \
+  --asserted-at $TS10 --timestamp $TS10 --json >/dev/null
+SHAPE=$($RUST facts --subject interop:life --json | $PYBIN -c \
+  'import json,sys; r=json.load(sys.stdin)["facts"]; print(len(r), r[0]["negation"])')
+[ "$SHAPE" = "1 True" ] || fail "rust sees '$SHAPE' after python refute"
+NEG=$($RUST facts --subject interop:life --json | $PYBIN -c \
+  'import json,sys; print(json.load(sys.stdin)["facts"][0]["assertion"])')
+$RUST retire-fact "$NEG" --reason "cycle complete" --author rs --timestamp $TS10 --json >/dev/null
+COUNT=$($PY facts --subject interop:life --json | $PYBIN -c \
+  'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
+[ "$COUNT" = "0" ] || fail "python still sees $COUNT active after rust retire"
+ok
+
 step "dump agrees across runtimes (COG-042)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
