@@ -1,7 +1,7 @@
 # Cogit Backlog
 
 created_datetime: 2026-07-02T12:00:00+03:00
-updated_datetime: 2026-07-08T11:20:00+03:00
+updated_datetime: 2026-07-10T00:23:37+03:00
 
 Ticket IDs are stable. Specs for open tickets live in `issues/<ID>.md`.
 Story references point to `user_stories/agent-user-stories.md`.
@@ -61,11 +61,17 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-053 | recap --project: scoped rows AND thoughts on shared-journal resume (review from sibling session; 110KB no-arg recap reproduced); dump forwards project into its recap block | `issues/COG-053.md` | `RecapProjectScopeTests` + rust `recap_project_scopes_shared_journal`; interop step 17 (scoped shape equal across runtimes) |
 | COG-034 | Live MCP usage phase (2026-07-03..04): 10 tickets spawned (COG-035..044), 8 shipped; verdicts instrumented by COG-039/041 | `issues/COG-034.md` | findings report `~/Reports/projects/cogit/research/2026-07-04-cog-034-live-usage-findings.md`; journal pressure 189 loose vs 5000 threshold |
 | COG-054 | Viewer v2 — work made visible: colored branch lanes, actor avatars + legend (dim by writer), per-thought project chips + thread highlight, expandable long values (шторка), UX pass (Esc, copy-toast, relative times, URL-synced filters, empty states); README screenshot refreshed; sims scene rejected by owner | `issues/COG-054.md` | `test_web_viewer.py` (12 tests); Playwright on shared journal 2026-07-09: expand, actor/project dim, Esc, copy-toast, URL preselect, 0 console errors; two-lane fixture renders 2 lane colors + merge dot; container rebuilt |
+| COG-055 | Transactional MCP `record` + protocol hardening: `micro_commit_batch` (COG-035 CAS model for N facts + M removals, no shared index, dirty-index refusal, stale-removal errors), payload validation before mutation, sanitized catch-all in `handle()` | `issues/COG-055.md` | defect reproduced 1:1 then fixed; `test_mcp_server.py` (7 tests: all-or-nothing, dirty-index preservation, supersede-in-one-thought, non-CogitError survival over real stdio); 170 py tests + interop 17/17 green 2026-07-10 |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
+| COG-056 | Atomic lifecycle porcelain: `supersede-fact`, `refute-fact`, `retire-fact` in one CAS thought | P0 (unblocked: build on `micro_commit_batch` from COG-055) | `issues/COG-056.md`; COG-035 concurrency model |
+| COG-057 | Durable removal provenance: ADR + recoverable supersede/refute/retire reasons | P1 | `issues/COG-057.md`; COG-045 structural lifecycle analytics |
+| COG-058 | Lint v2 + lifecycle hygiene ratchet + append-only shared-journal cleanup | P1 | `issues/COG-058.md`; COG-045/047; Aleph live-journal audit 2026-07-10 |
+| COG-059 | Project-scoped compact reader + health surface (analytics/log parity, bounded MCP output) | P1 | `issues/COG-059.md`; COG-042/053 |
+| COG-060 | Viewer lifecycle/health lens; conditional ETag/304 polling after measurement | P2 | `issues/COG-060.md`; COG-054; blocked by COG-058/059 |
 | COG-050 | Graph queries over premises: taint closure, maximin support (entry: measured premise adoption) | P2 (after COG-049) | `issues/COG-050.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 

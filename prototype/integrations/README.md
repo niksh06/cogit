@@ -60,8 +60,10 @@ previous value is superseded) and test-suite outcomes
 (`test:<project> suite_status = green|red`). One thought per assistant
 turn commits whatever was staged. Set `COGIT_CAPTURE=all` for the old
 firehose mode (every tool call — noisy, COG-012). For batch manual
-journaling from the main loop the MCP server offers `record` (N facts +
-optional removals -> one thought).
+journaling the MCP server offers `record` (N facts + optional removals ->
+one thought, atomically: the whole batch lands or repository state is
+unchanged; it bypasses the shared index and refuses while a staging
+session is in flight — COG-055).
 
 A third mode, `session-start` (COG-043), prints a compact belief digest
 (via `dump`) into every new session's context — the agent re-anchors

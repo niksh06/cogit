@@ -172,6 +172,82 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error)
         self.assertTrue(verify["healthy"], verify)
 
+    OK_FACT = {"kind": "agent_decision", "subject": "batch:a", "predicate": "state",
+               "object": "v1", "source": "agent:test", "confidence_bps": 9000}
+
+    def test_record_is_all_or_nothing(self):
+        # COG-055: a bad later item must leave HEAD and the index untouched
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, message = self.client.call_tool("record", {
+            "facts": [dict(self.OK_FACT), {"subject": "batch:b"}],
+            "message": "must not land",
+        })
+        self.assertTrue(is_error)
+        self.assertIn("missing required field", message)
+        is_error, status = self.client.call_tool("status")
+        self.assertFalse(is_error)
+        self.assertEqual(status["staged"], [])
+        self.assertIsNone(status["thought"])
+        # a removal that is not active fails with the same guarantee
+        is_error, message = self.client.call_tool("record", {
+            "facts": [dict(self.OK_FACT)],
+            "removals": [{"assertion_id": "sha256:" + "0" * 64, "reason": "superseded"}],
+            "message": "still must not land",
+        })
+        self.assertTrue(is_error, message)
+        is_error, status = self.client.call_tool("status")
+        self.assertFalse(is_error)
+        self.assertEqual(status["staged"], [])
+        self.assertIsNone(status["thought"])
+
+    def test_record_refuses_dirty_index_and_preserves_it(self):
+        # a batch must not absorb or roll back someone else's staging session
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, staged = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "other", "predicate": "session",
+            "object": "staging", "source": "agent:other", "confidence_bps": 8000,
+        })
+        self.assertFalse(is_error, staged)
+        is_error, message = self.client.call_tool("record", {
+            "facts": [dict(self.OK_FACT)], "message": "batch during staging",
+        })
+        self.assertTrue(is_error)
+        self.assertIn("non-empty index", message)
+        is_error, status = self.client.call_tool("status")
+        self.assertFalse(is_error)
+        self.assertEqual(status["staged"], [staged["assertion"]])
+
+    def test_record_replaces_active_fact_in_one_thought(self):
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, first = self.client.call_tool("add_fact", {**self.OK_FACT, "commit": True})
+        self.assertFalse(is_error, first)
+        replacement = {**self.OK_FACT, "object": "v2"}
+        is_error, batch = self.client.call_tool("record", {
+            "facts": [replacement],
+            "removals": [{"assertion_id": first["assertion"], "reason": "superseded"}],
+            "message": "supersede v1 -> v2",
+        })
+        self.assertFalse(is_error, batch)
+        self.assertEqual(batch["removed"], [first["assertion"]])
+        is_error, facts = self.client.call_tool("facts", {"subject": "batch:a"})
+        self.assertFalse(is_error)
+        self.assertEqual([row["object"] for row in facts["facts"]], ["v2"])
+        is_error, log = self.client.call_tool("log", {"limit": 1})
+        self.assertFalse(is_error)
+        self.assertEqual(log["thoughts"][0]["id"], batch["thought"])
+
+    def test_unexpected_exceptions_are_sanitized_not_fatal(self):
+        # COG-055: non-CogitError bugs must not kill the stdio loop or echo payloads
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, message = self.client.call_tool("add_fact", {
+            **self.OK_FACT, "negates": 42,  # non-string: used to escape as AttributeError
+        })
+        self.assertTrue(is_error)
+        self.assertIn("internal error", message)
+        self.assertNotIn("42", message)  # sanitized: no payload echo
+        is_error, _ = self.client.call_tool("status")
+        self.assertFalse(is_error)
+
     def test_tool_errors_are_soft(self):
         self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
         # secrets rejected through MCP too — as a tool error, not a crash

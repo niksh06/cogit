@@ -15,6 +15,7 @@ Register with Claude Code:
 import json
 import os
 import sys
+import traceback
 import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -143,9 +144,10 @@ TOOLS = [
     {
         "name": "record",
         "description": (
-            "Batch affordance (COG-044): stage several facts (same shape as add_fact, minus "
-            "commit/message) plus optional removals, then commit them as ONE thought. For the "
-            "main loop only — parallel subagents keep using add_fact(commit=true)."
+            "Batch affordance (COG-044): several facts (same shape as add_fact, minus "
+            "commit/message) plus optional removals become ONE thought, atomically — the whole "
+            "batch lands or repository state is unchanged (COG-055). Bypasses the shared index "
+            "and refuses when it is dirty; removals must target active assertions."
         ),
         "inputSchema": _schema(
             {
@@ -276,6 +278,26 @@ class CogitTools:
 
     # -- tools -----------------------------------------------------------------
 
+    REQUIRED_FACT_FIELDS = ("kind", "subject", "predicate", "object",
+                            "source", "confidence_bps")
+
+    def _validated_fact_args(self, fact, where):
+        """Shape-check a fact payload BEFORE any repository mutation (COG-055):
+        missing or mistyped fields become clean CogitError messages instead of
+        Python exceptions escaping the tool boundary."""
+        if not isinstance(fact, dict):
+            raise CogitError(f"{where} must be an object")
+        missing = [key for key in self.REQUIRED_FACT_FIELDS if key not in fact]
+        if missing:
+            raise CogitError(f"{where} is missing required field(s): {', '.join(missing)}")
+        if not isinstance(fact["source"], str) or not fact["source"]:
+            raise CogitError(f"{where}.source must be a non-empty string 'type[:uri]'")
+        if "qualifiers" in fact and not isinstance(fact["qualifiers"], dict):
+            raise CogitError(f"{where}.qualifiers must be an object")
+        if "premises" in fact and not isinstance(fact["premises"], list):
+            raise CogitError(f"{where}.premises must be an array of assertion ids")
+        return fact
+
     def _build_fact_doc(self, args):
         source_type, _sep, source_uri = args["source"].partition(":")
         source = {"type": source_type}
@@ -310,7 +332,7 @@ class CogitTools:
         return {"claim": claim, "assertion": assertion}
 
     def tool_add_fact(self, args):
-        doc = self._build_fact_doc(args)
+        doc = self._build_fact_doc(self._validated_fact_args(args, "add_fact"))
         if args.get("commit"):
             # atomic micro-commit: parallel-safe by construction (COG-035)
             return self.repo.micro_commit(doc, message=args.get("message"))
@@ -318,17 +340,32 @@ class CogitTools:
         return {"claim": claim_oid, "assertion": assertion_oid}
 
     def tool_record(self, args):
-        removed = []
-        for removal in args.get("removals", []):
-            oid = self.repo.expand_object_id(removal["assertion_id"])
-            self.repo.remove_fact(oid, removal["reason"])
-            removed.append(oid)
-        staged = []
-        for fact in args["facts"]:
-            claim_oid, assertion_oid = self.repo.add_fact(self._build_fact_doc(fact))
-            staged.append({"claim": claim_oid, "assertion": assertion_oid})
-        thought = self.repo.commit_thought(args["message"], args.get("author", INSTANCE_ACTOR))
-        return {"thought": thought, "facts": staged, "removed": removed}
+        # COG-055: validate the COMPLETE payload before any repository
+        # mutation, then publish through one atomic batch commit — a bad
+        # item can no longer leave earlier items staged.
+        facts = args.get("facts")
+        if not isinstance(facts, list) or not facts:
+            raise CogitError("record: 'facts' must be a non-empty array")
+        message = args.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise CogitError("record: a non-empty 'message' is required")
+        removals = args.get("removals") or []
+        if not isinstance(removals, list):
+            raise CogitError("record: 'removals' must be an array")
+        prepared = []
+        for pos, removal in enumerate(removals):
+            if (not isinstance(removal, dict) or not isinstance(removal.get("assertion_id"), str)
+                    or not isinstance(removal.get("reason"), str)):
+                raise CogitError(
+                    f"record: removals[{pos}] requires string 'assertion_id' and 'reason'")
+            prepared.append({
+                "id": self.repo.expand_object_id(removal["assertion_id"]),
+                "reason": removal["reason"],
+            })
+        docs = [self._build_fact_doc(self._validated_fact_args(fact, f"record: facts[{pos}]"))
+                for pos, fact in enumerate(facts)]
+        return self.repo.micro_commit_batch(
+            docs, prepared, message, author=args.get("author", INSTANCE_ACTOR))
 
     def tool_remove_fact(self, args):
         oid = self.repo.expand_object_id(args["assertion_id"])
@@ -474,6 +511,13 @@ def handle(tools, message):
         except CogitError as exc:
             return _response(request_id, {
                 "content": [{"type": "text", "text": f"{type(exc).__name__}: {exc}"}],
+                "isError": True,
+            })
+        except Exception as exc:  # noqa: BLE001 — the stdio loop must survive tool bugs (COG-055)
+            traceback.print_exc(file=sys.stderr)
+            return _response(request_id, {
+                "content": [{"type": "text", "text": f"internal error ({type(exc).__name__}): "
+                             "the tool call failed unexpectedly; details on server stderr"}],
                 "isError": True,
             })
     return _error(request_id, -32601, f"Method not found: {method}")

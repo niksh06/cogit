@@ -292,6 +292,99 @@ class Repository:
                 f"add-fact: ref kept moving during micro-commit; giving up after 5 attempts ({last_error})"
             )
 
+    def micro_commit_batch(self, docs: list, removals: list, message: str,
+                           author: str = None, timestamp: str = None):
+        """Record N beliefs and M removals as ONE thought WITHOUT touching
+        the shared index (COG-055): validate everything and write the
+        immutable fact objects first, then publish mindset = parent
+        - removed + added via the COG-035 ref old-target check with retry.
+        All-or-nothing by construction — either exactly one thought becomes
+        reachable or HEAD stays unchanged; the index is only guarded for
+        emptiness, never mutated."""
+        if not docs:
+            raise UserError("record: at least one fact is required")
+        if not message or not message.strip():
+            raise UserError("record: a thought message is required")
+        reject_suspected_secrets(message, "record")
+        removals = list(removals or [])
+        for entry in removals:
+            oid = entry.get("id") if isinstance(entry, dict) else None
+            reason = entry.get("reason") if isinstance(entry, dict) else None
+            if not oid or not is_oid(oid):
+                raise UserError(f"record: invalid removal assertion id '{oid}'")
+            if not reason or not str(reason).strip():
+                raise UserError(f"record: removal {oid} requires an explicit reason")
+            reject_suspected_secrets(reason, "record")
+        removed_ids = {entry["id"] for entry in removals}
+        if len(removed_ids) != len(removals):
+            raise UserError("record: duplicate removal targets")
+
+        written = [self._write_fact_objects(doc) for doc in docs]
+        added = {assertion_oid for _claim, assertion_oid, _assertion in written}
+        overlap = sorted(removed_ids & added)
+        if overlap:
+            raise UserError(f"record: assertion(s) both added and removed: {', '.join(overlap)}")
+        author = author or written[0][2]["actor"]
+        facts_out = [{"claim": claim, "assertion": assertion}
+                     for claim, assertion, _a in written]
+
+        with index_lock(self.cogit_dir):
+            if not index_is_empty(load_index(self.cogit_dir)):
+                raise UserError(
+                    "record: refuses with a non-empty index (staged facts, removals, conflicts, "
+                    "or merge in progress) — a batch must not absorb or invalidate staged work"
+                )
+            last_error = None
+            for _attempt in range(5):
+                branch, parent = self.head_info()
+                base_set = self._mindset_assertions(parent) if parent else set()
+                missing = sorted(removed_ids - base_set)
+                if missing:
+                    raise UserError(
+                        "record: removal target(s) not active in the current mindset: "
+                        + ", ".join(missing)
+                    )
+                new_assertions = (base_set - removed_ids) | added
+                if new_assertions == base_set:
+                    return {"thought": parent, "facts": facts_out, "removed": [],
+                            "already_active": True}
+                batch_index = dict(EMPTY_INDEX)
+                batch_index["staged_facts"] = sorted(added)
+                batch_index["removed_facts"] = [
+                    {"id": entry["id"], "reason": str(entry["reason"])} for entry in removals
+                ]
+                self._check_negation_consistency(sorted(new_assertions), batch_index)
+                ts = timestamp or now_utc()
+                mindset_oid = self.store.write(
+                    {"type": "mindset", "assertions": sorted(new_assertions), "created_at": ts}
+                )
+                thought_oid = self.store.write(
+                    {
+                        "type": "thought",
+                        "parents": [parent] if parent else [],
+                        "mindset": mindset_oid,
+                        "operation": "commit",
+                        "message": message,
+                        "author": author,
+                        "timestamp": ts,
+                    }
+                )
+                try:
+                    if branch is not None:
+                        self.refs.update_ref(branch, thought_oid, parent, author, "commit", message, ts)
+                        self.refs.append_reflog("HEAD", parent, thought_oid, author, "commit", message, ts)
+                    else:
+                        self.refs.write_head(
+                            thought_oid, parent, author, "commit", message, ts, expected_raw=parent
+                        )
+                    return {"thought": thought_oid, "facts": facts_out,
+                            "removed": sorted(removed_ids), "already_active": False}
+                except ConcurrentUpdateError as exc:
+                    last_error = exc  # someone advanced HEAD; recompute from the new tip
+            raise ConcurrentUpdateError(
+                f"record: ref kept moving during batch commit; giving up after 5 attempts ({last_error})"
+            )
+
     def remove_fact(self, assertion_oid: str, reason: str):
         if not is_oid(assertion_oid):
             raise UserError(f"remove-fact: invalid assertion id '{assertion_oid}'")
