@@ -126,11 +126,23 @@ TOOLS = [
     {
         "name": "lint",
         "description": (
-            "Claim-modeling linter (COG-047): checks ACTIVE beliefs against the cookbook — "
-            "prose objects, date-stamped subjects/predicates, blob qualifiers, band mismatches, "
-            "missing project qualifier. These silently disable supersede chains and analytics."
+            "Claim-modeling linter (COG-047/058): checks ACTIVE beliefs against the cookbook — "
+            "prose objects, unstable ids, blob qualifiers, band mismatches, missing project — "
+            "plus lifecycle hygiene: R11 competing active values in one claim family, R12 "
+            "singleton-state collisions, R13 prose lifecycle markers (heuristic). Output is "
+            "bounded (limit=50 default, totals exact); 'since' classifies findings "
+            "existing/new against a baseline anchor (ratchet). Read-only, never autofixes — "
+            "remediate with supersede_fact/refute_fact/retire_fact."
         ),
-        "inputSchema": _schema({"ref": REF, "project": {"type": "string"}}),
+        "inputSchema": _schema({
+            "ref": REF,
+            "project": {"type": "string"},
+            "since": {"type": "string", "description": "baseline anchor/ref for the ratchet"},
+            "rule": {"type": "string", "description": "show only this rule"},
+            "severity": {"type": "string", "enum": ["warn", "info"]},
+            "limit": {"type": "integer", "minimum": 0, "default": 50},
+            "summary": {"type": "boolean", "description": "totals only"},
+        }),
     },
     {
         "name": "analytics",
@@ -505,8 +517,14 @@ class CogitTools:
         return analyze(self.repo, args.get("ref"), top=args.get("top", 20))
 
     def tool_lint(self, args):
-        from lint import lint  # lazy: script-dir import
-        return lint(self.repo, args.get("ref"), project=args.get("project"))
+        from lint import lint, shape_report  # lazy: script-dir import
+        report = lint(self.repo, args.get("ref"), project=args.get("project"),
+                      since=args.get("since"))
+        # bounded by default (COG-058): full totals, capped detail rows
+        return shape_report(report, rule=args.get("rule"),
+                            severity=args.get("severity"),
+                            limit=args.get("limit", 50),
+                            summary=args.get("summary", False))
 
     def tool_dump(self, args):
         return self.repo.dump(args.get("ref"), project=args.get("project"),
