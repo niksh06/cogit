@@ -33,6 +33,22 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def compact_rows(rows, max_chars=120):
+    """COG-059 compact mode: long prose objects become a bounded preview.
+
+    Ids, scalars and short strings pass through untouched; a truncated row
+    keeps enough to identify the belief and records its true size.
+    """
+    for row in rows:
+        obj = row.get("object")
+        if isinstance(obj, str) and len(obj) > max_chars:
+            row["object"] = obj[:max_chars].rstrip() + "…"
+            row["object_bytes"] = len(obj.encode("utf-8"))
+            row["object_words"] = len(obj.split())
+            row["object_truncated"] = True
+    return rows
+
+
 def _parse_config(text: str) -> dict:
     """Minimal INI parser for .cogit/config."""
     sections = {}
@@ -1169,6 +1185,8 @@ class Repository:
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri"),
             "actor": assertion["actor"],
+            "asserted_at": assertion["asserted_at"],
+            "method": assertion["method"]["type"],
             "premises": assertion.get("premises", []),
             "status": assertion["status"],
         }
@@ -1306,10 +1324,13 @@ class Repository:
     # -- dump (COG-042) ----------------------------------------------------------------
 
     def dump(self, ref: str = None, project: str = None, since: str = None,
-             log_limit: int = 50):
+             log_limit: int = 50, compact: bool = False):
         """One-call reader surface: active facts, first introducers, anchors,
         branches, bounded log, and a recap block — everything a context-free
-        agent needs to re-anchor without porcelain archaeology."""
+        agent needs to re-anchor without porcelain archaeology. With project
+        (COG-059) the LOG is scoped too: only thoughts that changed that
+        project's beliefs. compact=True replaces long prose objects with a
+        bounded preview plus byte/word counts (ids and scalars untouched)."""
         status = self.status()
         doc = {
             "position": status,
@@ -1340,13 +1361,36 @@ class Repository:
                 if all(aid not in mindsets.get(p, set()) for p in parents):
                     introducer[aid] = oid
         doc["introducer"] = introducer
+        log_order = list(reversed(order))
+        if project is not None:
+            # COG-059: the shared-journal log is scoped like recap's thoughts —
+            # keep only thoughts that CHANGED this project's beliefs
+            row_cache = {}
+
+            def touches(oid):
+                parent_union = set()
+                for parent in thoughts[oid]["parents"]:
+                    parent_union |= mindsets.get(parent, set())
+                for aid in mindsets[oid] ^ parent_union:
+                    if aid not in row_cache:
+                        row_cache[aid] = self._fact_row(aid)
+                    if self._row_matches(row_cache[aid], project=project):
+                        return True
+                return False
+
+            log_order = [oid for oid in log_order if touches(oid)]
         doc["log"] = [
             {"id": oid, **{key: thoughts[oid][key]
                            for key in ("parents", "message", "author", "timestamp", "operation")}}
-            for oid in list(reversed(order))[: max(0, log_limit)]
+            for oid in log_order[: max(0, log_limit)]
         ]
         try:
             doc["recap"] = self.recap(since, thought_oid, project=project)
         except UserError as exc:
             doc["recap"] = {"error": str(exc)}
+        if compact:
+            compact_rows(doc["facts"])
+            for block in ("added", "removed"):
+                if isinstance(doc["recap"], dict) and isinstance(doc["recap"].get(block), list):
+                    compact_rows(doc["recap"][block])
         return doc

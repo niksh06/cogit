@@ -1653,6 +1653,8 @@ impl Repository {
             "source": assertion["source"]["type"],
             "source_uri": assertion["source"].get("uri").cloned().unwrap_or(Value::Null),
             "actor": assertion["actor"],
+            "asserted_at": assertion["asserted_at"],
+            "method": assertion["method"]["type"],
             "premises": assertion.get("premises").cloned().unwrap_or_else(|| json!([])),
             "status": assertion["status"],
         }))
@@ -1922,9 +1924,42 @@ impl Repository {
             }
         }
         doc["introducer"] = json!(introducer);
-        let log_rows: Vec<Value> = order
-            .iter()
-            .rev()
+        // COG-059: with project the LOG is scoped like recap's thoughts —
+        // keep only thoughts that changed this project's beliefs
+        let mut row_cache: BTreeMap<String, Value> = BTreeMap::new();
+        let mut log_order: Vec<&String> = order.iter().rev().collect();
+        if let Some(project) = project {
+            let mut kept = Vec::new();
+            for oid in log_order {
+                let parents: Vec<String> = thoughts[oid]["parents"]
+                    .as_array()
+                    .map(|ps| ps.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect())
+                    .unwrap_or_default();
+                let mut parent_union: BTreeSet<String> = BTreeSet::new();
+                for parent in &parents {
+                    if let Some(mindset) = mindsets.get(parent) {
+                        parent_union.extend(mindset.iter().cloned());
+                    }
+                }
+                let mut touched = false;
+                for aid in mindsets[oid].symmetric_difference(&parent_union) {
+                    if !row_cache.contains_key(aid) {
+                        let row = self.fact_row(aid)?;
+                        row_cache.insert(aid.clone(), row);
+                    }
+                    if Self::row_matches(&row_cache[aid], None, None, Some(project)) {
+                        touched = true;
+                        break;
+                    }
+                }
+                if touched {
+                    kept.push(oid);
+                }
+            }
+            log_order = kept;
+        }
+        let log_rows: Vec<Value> = log_order
+            .into_iter()
             .take(log_limit)
             .map(|oid| {
                 let thought = &thoughts[oid];

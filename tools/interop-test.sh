@@ -183,9 +183,9 @@ RSP=$($RUST recap "$REFT" --json | $PYBIN -c 'import json,sys; d=json.load(sys.s
 echo "$PYP" | grep -q "cycle complete" || fail "retire reason not recoverable: $PYP"
 ok
 
-step "dump agrees across runtimes (COG-042)"
-PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
-RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), len(d["facts"]), d["recap"].get("from_anchor")]))')
+step "dump agrees across runtimes (COG-042; rows carry asserted_at+method, COG-059)"
+PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
+RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
 [ "$PYD" = "$RSD" ] || fail "dump disagrees: $PYD vs $RSD"
 ok
 

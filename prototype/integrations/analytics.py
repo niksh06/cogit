@@ -69,12 +69,13 @@ def family_key(row):
             json.dumps(row["qualifiers"], sort_keys=True, ensure_ascii=False))
 
 
-def belief_outcomes(repo, ref=None):
+def belief_outcomes(repo, ref=None, project=None):
     """Classify the lifecycle outcome of every assertion in the ancestry.
 
     Returns (outcomes, rows, families): outcome per assertion id
     (open|superseded|refuted|retired), the decoded row per assertion id,
-    and per-family revision history (oldest first).
+    and per-family revision history (oldest first). With project (COG-059)
+    only assertions carrying that project qualifier are classified.
     """
     status = repo.status()
     if ref is None and status["thought"] is None:
@@ -134,6 +135,13 @@ def belief_outcomes(repo, ref=None):
     active = repo.facts(thought_oid)["facts"]
     for row in active:
         outcomes[row["assertion"]] = "open"
+    if project is not None:
+        keep = {aid for aid, row in rows.items()
+                if (row.get("qualifiers") or {}).get("project") == project}
+        outcomes = {aid: v for aid, v in outcomes.items() if aid in keep}
+        rows = {aid: row for aid, row in rows.items() if aid in keep}
+        families = {key: history for key, history in families.items()
+                    if any(entry["assertion"] in keep for entry in history)}
     return outcomes, rows, families
 
 
@@ -156,8 +164,8 @@ def _finish(bucket):
     }
 
 
-def analyze(repo, ref=None, top=20):
-    outcomes, rows, families = belief_outcomes(repo, ref)
+def analyze(repo, ref=None, top=20, project=None):
+    outcomes, rows, families = belief_outcomes(repo, ref, project=project)
     by_band, by_source = {}, {}
     for aid, outcome in outcomes.items():
         row = rows[aid]
@@ -190,6 +198,7 @@ def analyze(repo, ref=None, top=20):
 
     return {
         "ref": ref or "HEAD",
+        "project": project,
         "assertions_seen": len(outcomes),
         "calibration_by_band": {name: _finish(by_band[name])
                                 for name in band_order if name in by_band},
@@ -228,10 +237,13 @@ def main(argv=None):
     parser.add_argument("--repo", default=os.environ.get("COGIT_REPO", "."))
     parser.add_argument("--ref", default=None)
     parser.add_argument("--top", type=int, default=20)
+    parser.add_argument("--project", default=None,
+                        help="scope classification to this project qualifier (COG-059)")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
-        report = analyze(Repository.open(args.repo), args.ref, top=args.top)
+        report = analyze(Repository.open(args.repo), args.ref, top=args.top,
+                         project=args.project)
     except CogitError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

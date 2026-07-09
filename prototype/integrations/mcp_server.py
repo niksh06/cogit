@@ -149,9 +149,26 @@ TOOLS = [
         "description": (
             "Belief analytics (COG-045): calibration per confidence band and source type "
             "(open/superseded/refuted/retired, survival = open/(open+refuted)) plus claim "
-            "families ranked by revision churn. Outcomes inferred structurally from history."
+            "families ranked by revision churn. Outcomes from recorded removal reasons "
+            "(ADR-0014) with structural inference as fallback. 'project' scopes everything."
         ),
-        "inputSchema": _schema({"ref": REF, "top": {"type": "integer", "minimum": 1, "default": 20}}),
+        "inputSchema": _schema({"ref": REF, "top": {"type": "integer", "minimum": 1, "default": 20},
+                                "project": {"type": "string"}}),
+    },
+    {
+        "name": "health",
+        "description": (
+            "One-call project health (COG-059) — THE preferred re-anchor for journal-quality "
+            "questions: repository integrity, active/negation/outcome counts, lint totals "
+            "(+ new-debt vs a 'since' baseline), lifecycle candidates (bounded, compact "
+            "previews), last project thought, newest anchor, top volatile families. On a "
+            "shared journal 'project' is required; totals are exact, detail is top-N."
+        ),
+        "inputSchema": _schema({
+            "project": {"type": "string"},
+            "since": {"type": "string", "description": "lint baseline anchor/ref"},
+            "top": {"type": "integer", "minimum": 0, "default": 10},
+        }),
     },
     {
         "name": "record",
@@ -241,7 +258,10 @@ TOOLS = [
         ),
         "inputSchema": _schema({
             "ref": REF,
-            "project": {"type": "string", "description": "filter facts by project qualifier"},
+            "compact": {"type": "boolean",
+                        "description": "bounded previews for long prose objects (COG-059)"},
+            "project": {"type": "string",
+                        "description": "scope facts AND the log to this project (COG-059)"},
             "since": {**REF, "description": "recap-from anchor/ref (default: newest anchor)"},
             "limit_log": {"type": "integer", "minimum": 1, "default": 50},
         }),
@@ -514,7 +534,13 @@ class CogitTools:
 
     def tool_analytics(self, args):
         from analytics import analyze  # lazy: script-dir import
-        return analyze(self.repo, args.get("ref"), top=args.get("top", 20))
+        return analyze(self.repo, args.get("ref"), top=args.get("top", 20),
+                       project=args.get("project"))
+
+    def tool_health(self, args):
+        from health import health  # lazy: script-dir import
+        return health(self.repo, project=args.get("project"),
+                      since=args.get("since"), top=args.get("top", 10))
 
     def tool_lint(self, args):
         from lint import lint, shape_report  # lazy: script-dir import
@@ -529,7 +555,8 @@ class CogitTools:
     def tool_dump(self, args):
         return self.repo.dump(args.get("ref"), project=args.get("project"),
                               since=args.get("since"),
-                              log_limit=args.get("limit_log", 50))
+                              log_limit=args.get("limit_log", 50),
+                              compact=args.get("compact", False))
 
     def tool_log(self, args):
         thoughts = self.repo.log(args.get("ref"))

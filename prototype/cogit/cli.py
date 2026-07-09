@@ -520,7 +520,7 @@ def cmd_recap(args):
 def cmd_dump(args):
     repo = _open_repo(args)
     result = repo.dump(args.ref, project=args.project, since=args.since,
-                       log_limit=args.limit_log)
+                       log_limit=args.limit_log, compact=args.compact)
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
     return 0
 
@@ -908,9 +908,11 @@ def build_parser():
     p = sub.add_parser(
         "dump", help="one-call reader surface: facts+introducers+anchors+log+recap (JSON only)")
     p.add_argument("ref", nargs="?")
-    p.add_argument("--project", help="filter facts by the project qualifier")
+    p.add_argument("--project", help="scope facts AND the log to the project qualifier (COG-059)")
     p.add_argument("--since", help="anchor/ref for the recap block (default: newest anchor)")
     p.add_argument("--limit-log", dest="limit_log", type=int, default=50)
+    p.add_argument("--compact", action="store_true",
+                   help="bounded previews for long prose objects (COG-059)")
     p.set_defaults(func=cmd_dump)
 
     p = sub.add_parser("verify", help="check repository health (reports, never repairs)")
