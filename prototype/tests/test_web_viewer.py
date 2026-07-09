@@ -124,6 +124,10 @@ class ViewerHttpTests(unittest.TestCase):
         for marker in (b'id="actors"', b'id="toast"', b"laneColor",
                        b"EXPANDED", b"syncUrl"):
             self.assertIn(marker, body)
+        # viewer health lens (COG-060): panel, family lens, conditional polling
+        for marker in (b'id="health-card"', b"familyLens", b"If-None-Match",
+                       b"remediationPayload"):
+            self.assertIn(marker, body)
 
     def test_unknown_path_is_json_404(self):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -140,6 +144,47 @@ class ViewerHttpTests(unittest.TestCase):
         self._get("/api/state")
         self.assertEqual(self.repo.reflog("HEAD"), before)
 
+    def test_mutating_methods_are_not_implemented(self):
+        # COG-060: the read-only guarantee is pinned — no mutating HTTP, ever
+        req = urllib.request.Request(self.base + "/api/state", data=b"{}", method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 501)
+        ctx.exception.close()
+
+    def test_etag_304_skips_rebuild_until_state_changes(self):
+        # COG-060 (measured gate): unchanged polls must not rebuild the body
+        status, _ctype, _body, headers = self._get_full("/api/state")
+        self.assertEqual(status, 200)
+        etag = headers.get("ETag")
+        self.assertTrue(etag)
+        req = urllib.request.Request(self.base + "/api/state",
+                                     headers={"If-None-Match": etag})
+        with self.assertRaises(urllib.error.HTTPError) as ctx:  # urllib treats 304 as error
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 304)
+        self.assertEqual(ctx.exception.read(), b"")
+        ctx.exception.close()
+        # a new thought invalidates the fingerprint
+        self.repo.micro_commit(fact_doc("changed", obj=True, when=ts(1)), timestamp=ts(1))
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertNotEqual(resp.headers.get("ETag"), etag)
+
+    def test_health_endpoint_scopes_by_project(self):
+        doc = fact_doc("scoped", obj="x", when=ts(2))
+        doc["claim"]["qualifiers"]["project"] = "alpha"
+        self.repo.micro_commit(doc, timestamp=ts(2))
+        status, ctype, body = self._get("/api/health?project=alpha")
+        self.assertEqual(status, 200)
+        health = json.loads(body)
+        self.assertEqual(health["project"], "alpha")
+        self.assertEqual(health["beliefs"]["active"], 1)
+
+    def _get_full(self, path):
+        with urllib.request.urlopen(self.base + path) as resp:
+            return resp.status, resp.headers.get("Content-Type"), resp.read(), resp.headers
+
 
 class SnapshotTests(unittest.TestCase):
     def test_snapshot_embeds_state_and_escapes_script_breakout(self):
@@ -155,6 +200,21 @@ class SnapshotTests(unittest.TestCase):
         embedded = html.split("window.COGIT_STATE = ", 1)[1].split(";</script>", 1)[0]
         state = json.loads(embedded)
         self.assertEqual(state["head_facts"][0]["object"], "</script><b>x")
+
+    def test_snapshot_embeds_per_project_health(self):
+        tmp, repo = make_repo()
+        self.addCleanup(tmp.cleanup)
+        doc = fact_doc("snap", obj="v", when=ts(0))
+        doc["claim"]["qualifiers"]["project"] = "solo"
+        repo.micro_commit(doc, timestamp=ts(0))
+        out = os.path.join(tmp.name, "snap-health.html")
+        web_viewer.write_snapshot(repo, out)
+        with open(out, encoding="utf-8") as handle:
+            html = handle.read()
+        embedded = html.split("window.COGIT_STATE = ", 1)[1].split(";</script>", 1)[0]
+        state = json.loads(embedded)
+        self.assertIn("solo", state["health"])
+        self.assertEqual(state["health"]["solo"]["beliefs"]["active"], 1)
 
     def test_main_snapshot_mode(self):
         tmp, repo = make_repo()

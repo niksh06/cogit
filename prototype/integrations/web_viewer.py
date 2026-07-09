@@ -20,17 +20,34 @@ is a deliberate decision by the operator.
 """
 
 import argparse
+import hashlib
 import http.server
 import json
 import os
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit import __version__  # noqa: E402
 from cogit.errors import CogitError, CorruptionError  # noqa: E402
 from cogit.repo import Repository, now_utc  # noqa: E402
+
+from health import health  # noqa: E402  (script-dir import, like analytics)
+
+
+def state_fingerprint(repo: Repository) -> str:
+    """Cheap change detector (COG-060): every viewer-visible mutation moves a
+    ref — thoughts move heads, anchors/annotations move their namespaces —
+    so hashing (HEAD, all refs) detects change WITHOUT rebuilding the state.
+    Measured motivation: a full build_state costs ~1.4s/605KB on the live
+    journal; an unchanged 3s-poll must not pay that."""
+    parts = [repo.refs.read_head_raw()]
+    for prefix in ("refs/heads", "refs/anchors", "refs/notes"):
+        for refname, target in sorted(repo.refs.list_refs(prefix)):
+            parts.append(f"{refname}={target}")
+    digest = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+    return f'"{digest[:32]}"'
 
 
 def _topo_oldest_first(thoughts: dict) -> list:
@@ -172,7 +189,18 @@ def render_page(state_json: str = None) -> str:
 
 
 def write_snapshot(repo: Repository, out_path: str) -> str:
-    html = render_page(json.dumps(build_state(repo)))
+    state = build_state(repo)
+    # snapshot mode renders the same health data (COG-060): embed per project
+    projects = sorted({(row.get("qualifiers") or {}).get("project")
+                       for row in state["head_facts"]
+                       if (row.get("qualifiers") or {}).get("project")})
+    state["health"] = {}
+    for project in projects:
+        try:
+            state["health"][project] = health(repo, project=project)
+        except CogitError:
+            continue
+    html = render_page(json.dumps(state))
     with open(out_path, "w", encoding="utf-8") as handle:
         handle.write(html)
     return out_path
@@ -181,23 +209,44 @@ def write_snapshot(repo: Repository, out_path: str) -> str:
 class ViewerHandler(http.server.BaseHTTPRequestHandler):
     server_version = "cogit-viewer/" + __version__
 
-    def _send(self, code: int, ctype: str, body: bytes):
+    def _send(self, code: int, ctype: str, body: bytes, etag: str = None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if etag:
+            self.send_header("ETag", etag)
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):  # noqa: N802 - http.server contract
-        path = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        path = parsed.path
         if path == "/":
             self._send(200, "text/html; charset=utf-8", render_page().encode("utf-8"))
         elif path == "/api/state":
             try:
                 repo = Repository.open(self.server.repo_path)
+                # COG-060 (measured): an unchanged poll answers 304 from the
+                # ref fingerprint alone — the expensive body is never rebuilt
+                etag = state_fingerprint(repo)
+                if self.headers.get("If-None-Match") == etag:
+                    self.send_response(304)
+                    self.send_header("ETag", etag)
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return
                 body = json.dumps(build_state(repo)).encode("utf-8")
+                self._send(200, "application/json", body, etag=etag)
+            except CogitError as exc:
+                self._send(400, "application/json", json.dumps({"error": str(exc)}).encode("utf-8"))
+        elif path == "/api/health":
+            try:
+                repo = Repository.open(self.server.repo_path)
+                params = parse_qs(parsed.query)
+                project = (params.get("project") or [None])[0]
+                body = json.dumps(health(repo, project=project)).encode("utf-8")
                 self._send(200, "application/json", body)
             except CogitError as exc:
                 self._send(400, "application/json", json.dumps({"error": str(exc)}).encode("utf-8"))
@@ -343,6 +392,10 @@ tr.expand td { border-top:none; padding-top:0; }
 .kv .v.copy:hover { color:var(--accent); }
 .msg-big { font-size:15px; font-weight:600; margin-bottom:8px;
   white-space:pre-wrap; word-break:break-word; }
+.healthrows { display:flex; flex-direction:column; gap:6px; }
+.healthrow { display:flex; gap:6px; flex-wrap:wrap; }
+.chip.lens { color:var(--muted); border-color:var(--border); margin-left:6px; }
+.chip.warn.lens { color:var(--red); border-color:var(--red); cursor:pointer; }
 #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
   background:var(--panel); border:1px solid var(--border); border-radius:8px;
   padding:6px 12px; font-size:13px; opacity:0; pointer-events:none;
@@ -378,6 +431,10 @@ tr.expand td { border-top:none; padding-top:0; }
   </section>
   <div class="col">
     <section class="card"><h2>Recap</h2><div id="recap"></div></section>
+    <section class="card" id="health-card" hidden>
+      <h2>Project health <span id="health-proj" class="muted"></span></h2>
+      <div id="health"></div>
+    </section>
     <section class="card">
       <h2>Active beliefs <span id="beliefs-n" class="muted"></span></h2>
       <div class="filters">
@@ -417,8 +474,9 @@ const fmtTs = t => t ? t.replace('T', ' ').replace('Z', '').replace('+00:00', ''
 const pct = bps => (bps / 100).toFixed(0) + '%';
 const distinct = a => [...new Set(a)];
 
-let STATE = null, SIG = '', SEL = null, URL_FILTERS_APPLIED = false;
+let STATE = null, ETAG = null, SEL = null, URL_FILTERS_APPLIED = false;
 let ACTOR_SEL = null, LIVE_MODE = true, DOTS = {}, TOAST_TIMER = null;
+let HEALTH = null;
 const EXPANDED = new Set();
 
 // Lane palette: one stable color per graph column, git-graph style.
@@ -510,14 +568,80 @@ function setLive(ok) {
 
 async function poll() {
   try {
-    const res = await fetch('/api/state', {cache: 'no-store'});
+    // COG-060 (measured): an unchanged poll costs one fingerprint check —
+    // the server answers 304 and never rebuilds the 600KB body
+    const headers = ETAG ? {'If-None-Match': ETAG} : {};
+    const res = await fetch('/api/state', {cache: 'no-store', headers});
+    if (res.status === 304) { setLive(true); return; }
     if (!res.ok) throw new Error('http ' + res.status);
-    const s = await res.json();
+    ETAG = res.headers.get('ETag');
+    STATE = await res.json();
     setLive(true);
-    const {generated_at, ...rest} = s;
-    const sig = JSON.stringify(rest);
-    if (sig !== SIG) { SIG = sig; STATE = s; renderAll(); }
+    renderAll();
+    loadHealth();
   } catch (e) { setLive(false); }
+}
+
+async function loadHealth() {
+  const proj = $('#f-project').value;
+  const card = $('#health-card');
+  if (!proj || !STATE) { card.hidden = true; HEALTH = null; return; }
+  if (!LIVE_MODE) {
+    HEALTH = (STATE.health || {})[proj] || null;
+    card.hidden = !HEALTH;
+    if (HEALTH) renderHealth(proj);
+    return;
+  }
+  try {
+    const res = await fetch('/api/health?project=' + encodeURIComponent(proj),
+                            {cache: 'no-store'});
+    if (!res.ok) throw new Error('http ' + res.status);
+    HEALTH = await res.json();
+    card.hidden = false;
+    renderHealth(proj);
+  } catch (e) { card.hidden = true; HEALTH = null; }
+}
+
+function stat(text, cls) {
+  return el('span', 'chip ' + (cls || ''), text);
+}
+
+function renderHealth(proj) {
+  $('#health-proj').textContent = proj;
+  const box = $('#health'); box.innerHTML = '';
+  const h = HEALTH;
+  const beliefs = h.beliefs, outcomes = beliefs.outcomes;
+  const rows = el('div', 'healthrows');
+  const r1 = el('div', 'healthrow');
+  r1.append(stat(h.integrity.healthy ? 'integrity ok' : h.integrity.errors + ' integrity errors',
+                 h.integrity.healthy ? 'ok' : 'err'),
+            stat(beliefs.active + ' active'),
+            stat('⊘ ' + beliefs.active_negations + ' negations'));
+  const r2 = el('div', 'healthrow');
+  r2.append(stat(outcomes.superseded + ' superseded'),
+            stat(outcomes.refuted + ' refuted', outcomes.refuted ? 'warn' : ''),
+            stat(outcomes.retired + ' retired'),
+            stat(beliefs.revised_families + '/' + beliefs.families + ' families revised'));
+  const r3 = el('div', 'healthrow');
+  const lint = h.lint;
+  r3.append(stat(lint.findings + ' lint findings (' + lint.warnings + ' warn)'));
+  if (lint.baseline) {
+    r3.append(stat(lint.baseline.new + ' new since ' + lint.baseline.since,
+                   lint.baseline.new_warnings ? 'err' : 'ok'));
+  }
+  rows.append(r1, r2, r3);
+  box.append(rows);
+  const cands = h.lifecycle_candidates;
+  if (cands.total) {
+    box.append(el('h3', null, 'Lifecycle candidates (' + cands.total + ')'));
+    cands.top.forEach(c => {
+      const d = el('div', 'fact-line');
+      d.append(el('span', 'chip warn', c.rule.replace(/^R\d+-/, '')),
+               el('span', 'mono', ' ' + c.subject + ' ' + c.predicate),
+               el('span', 'muted', ' — ' + c.message.slice(0, 90)));
+      box.append(d);
+    });
+  }
 }
 
 function renderAll() {
@@ -734,6 +858,40 @@ function onFilterChange() {
   syncUrl();
   renderBeliefs();
   applyDim();
+  loadHealth();
+}
+
+function familyLens() {
+  // lifecycle lens (COG-060): exact families with >1 member — competing
+  // values vs corroboration; the lens reads ALL active beliefs, not the
+  // filtered view, so the verdict never depends on the current filter
+  const lens = {};
+  const groups = {};
+  STATE.head_facts.forEach(r => {
+    if (r.negation) return;
+    const key = r.kind + '|' + r.subject + '|' + r.predicate + '|' +
+      JSON.stringify(r.qualifiers || {});
+    (groups[key] = groups[key] || []).push(r);
+  });
+  for (const key in groups) {
+    const members = groups[key];
+    if (members.length < 2) continue;
+    const values = new Set(members.map(r => JSON.stringify(r.object)));
+    members.forEach(r => {
+      lens[r.assertion] = {competing: values.size > 1, members};
+    });
+  }
+  return lens;
+}
+
+function remediationPayload(members) {
+  // explicit assertion ids only — the reader decides, the viewer never mutates
+  return JSON.stringify({
+    remediate_with: 'supersede_fact | retire_fact (COG-056, one atomic thought)',
+    family: {subject: members[0].subject, predicate: members[0].predicate},
+    assertions: members.map(r => ({assertion: r.assertion, object: r.object,
+                                   actor: r.actor, confidence_bps: r.confidence_bps})),
+  }, null, 1);
 }
 
 function fillSelect(sel, values, label) {
@@ -758,6 +916,7 @@ function beliefRows() {
 function renderBeliefs() {
   const tbody = $('#beliefs tbody'); tbody.innerHTML = '';
   const rows = beliefRows();
+  const lens = familyLens();
   $('#beliefs-n').textContent = rows.length === STATE.head_facts.length
     ? '(' + rows.length + ')' : '(' + rows.length + ' / ' + STATE.head_facts.length + ')';
   if (!rows.length) {
@@ -803,6 +962,23 @@ function renderBeliefs() {
     tr.append(conf);
     const kindTd = el('td');
     kindTd.append(el('span', 'chip kind', r.kind));
+    const verdict = lens[r.assertion];
+    if (verdict) {
+      const badge = verdict.competing
+        ? el('span', 'chip warn lens', '⚔ ' + verdict.members.length + ' values')
+        : el('span', 'chip lens', '×' + verdict.members.length + ' corroborated');
+      badge.title = verdict.competing
+        ? 'competing active values in one claim family — click to copy the '
+          + 'remediation payload (explicit assertion ids, COG-056)'
+        : verdict.members.length + ' assertions agree on this value';
+      if (verdict.competing) {
+        badge.addEventListener('click', ev => {
+          ev.stopPropagation();
+          copyText(remediationPayload(verdict.members));
+        });
+      }
+      kindTd.append(badge);
+    }
     tr.append(kindTd);
     tr.addEventListener('click', () => select({type: 'fact', id: r.assertion}));
     tbody.append(tr);
@@ -966,6 +1142,7 @@ function init() {
     live.className = 'chip snap';
     live.textContent = 'snapshot · ' + fmtTs(STATE.generated_at);
     renderAll();
+    loadHealth();
   } else {
     poll();
     setInterval(poll, 3000);
