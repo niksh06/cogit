@@ -236,6 +236,45 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error)
         self.assertEqual(log["thoughts"][0]["id"], batch["thought"])
 
+    def test_record_failure_modes_never_stage(self):
+        # regression sweep (report 2026-07-10): EVERY failure mode — schema,
+        # secret, premises, removals, types — leaves zero staging, HEAD unmoved
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, base = self.client.call_tool("add_fact", {**self.OK_FACT, "commit": True})
+        self.assertFalse(is_error, base)
+        cases = {
+            "missing kind": {"facts": [dict(self.OK_FACT), {"subject": "bad"}],
+                             "message": "m"},
+            "secret in later fact": {"facts": [
+                dict(self.OK_FACT),
+                {**self.OK_FACT, "subject": "leak", "object": "AKIA" + "ABCDEFGHIJKLMNOP"}],
+                "message": "m"},
+            "missing premise": {"facts": [
+                dict(self.OK_FACT),
+                {**self.OK_FACT, "subject": "d", "premises": ["sha256:" + "0" * 64]}],
+                "message": "m"},
+            "malformed removal": {"facts": [dict(self.OK_FACT)],
+                                  "removals": [{"assertion_id": 42, "reason": "r"}],
+                                  "message": "m"},
+            "duplicate removals": {"facts": [dict(self.OK_FACT)],
+                                   "removals": [
+                                       {"assertion_id": base["assertion"], "reason": "r"},
+                                       {"assertion_id": base["assertion"], "reason": "r"}],
+                                   "message": "m"},
+            "wrong confidence type": {"facts": [
+                dict(self.OK_FACT), {**self.OK_FACT, "confidence_bps": "high"}],
+                "message": "m"},
+            "blank message": {"facts": [dict(self.OK_FACT)], "message": "  "},
+        }
+        for name, args in cases.items():
+            is_error, message = self.client.call_tool("record", args)
+            self.assertTrue(is_error, f"{name}: unexpectedly landed: {message}")
+            is_error, status = self.client.call_tool("status")
+            self.assertFalse(is_error)
+            self.assertEqual(status["staged"], [], f"{name} left staging")
+            self.assertEqual(status["removed"], [], f"{name} left removals")
+            self.assertEqual(status["thought"], base["thought"], f"{name} moved HEAD")
+
     def test_lifecycle_tools_over_mcp(self):
         # COG-056: supersede -> refute -> retire, each ONE atomic thought
         self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
