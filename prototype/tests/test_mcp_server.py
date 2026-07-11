@@ -236,6 +236,32 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error)
         self.assertEqual(log["thoughts"][0]["id"], batch["thought"])
 
+    def test_write_time_hints_nudge_prose_objects(self):
+        # COG-067: discipline feedback arrives IN the write response
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, noisy = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "svc:noisy", "predicate": "verdict",
+            "object": "we shipped the thing and also fixed the bug and then the "
+                      "pipeline went green after we restarted the worker twice",
+            "commit": True,
+        })
+        self.assertFalse(is_error, noisy)
+        self.assertTrue(any(h.startswith("R2-prose-object") for h in noisy["hints"]),
+                        noisy.get("hints"))
+        is_error, clean = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "svc:clean", "predicate": "verdict",
+            "object": "adopt", "project": "demo", "commit": True,
+        })
+        self.assertFalse(is_error, clean)
+        self.assertNotIn("hints", clean)  # nothing to nudge, nothing said
+        is_error, batch = self.client.call_tool("record", {
+            "facts": [{"kind": "agent_decision", "subject": "svc:batch",
+                       "predicate": "status", "object": "x " * 30, "project": "demo"}],
+            "message": "batch with prose",
+        })
+        self.assertFalse(is_error, batch)
+        self.assertTrue(any("R2" in h for h in batch["hints"]))
+
     def test_minimal_fact_with_detail_lands_in_one_call(self):
         # COG-064/065: ceremony cut — defaults for source/confidence, rich
         # nuance as a same-call annotation instead of a second tool call

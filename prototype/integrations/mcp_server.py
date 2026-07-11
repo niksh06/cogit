@@ -433,6 +433,35 @@ class CogitTools:
                 {self.repo.expand_object_id(p) for p in args["premises"]})
         return {"claim": claim, "assertion": assertion}
 
+    def _hint_row(self, doc, claim_oid, assertion_oid):
+        claim, assertion = doc["claim"], doc["assertion"]
+        return {
+            "assertion": assertion_oid, "claim": claim_oid,
+            "kind": claim["kind"], "subject": claim["subject"],
+            "predicate": claim["predicate"], "object": claim["object"],
+            "negates": claim.get("negates"),
+            "negation": claim.get("negates") is not None,
+            "qualifiers": claim.get("qualifiers", {}),
+            "confidence_bps": assertion["confidence_bps"],
+            "source": assertion["source"]["type"],
+            "source_uri": assertion["source"].get("uri"),
+            "actor": assertion["actor"], "asserted_at": assertion["asserted_at"],
+            "method": assertion["method"]["type"],
+            "premises": assertion.get("premises", []),
+            "status": assertion["status"],
+        }
+
+    def _write_hints(self, written):
+        """COG-067: write-time discipline nudges — lint the just-written rows
+        and return the findings IN the tool response. Advisory only: the fact
+        already landed; the next one gets written better."""
+        from lint import check_row  # lazy: script-dir import
+        hints = []
+        for doc, claim_oid, assertion_oid in written:
+            for finding in check_row(self._hint_row(doc, claim_oid, assertion_oid)):
+                hints.append(f"{finding['rule']}: {finding['message']}")
+        return hints
+
     def _attach_detail(self, assertion_oid, detail, actor):
         """COG-064: rich nuance in the SAME call — the atomic object stays a
         value, the prose lands as an annotation on the assertion."""
@@ -448,12 +477,19 @@ class CogitTools:
             if args.get("detail"):
                 self._attach_detail(result["assertion"], args["detail"],
                                     args.get("actor", INSTANCE_ACTOR))
+            hints = self._write_hints([(doc, result["claim"], result["assertion"])])
+            if hints:
+                result["hints"] = hints
             return result
         claim_oid, assertion_oid = self.repo.add_fact(doc)
         if args.get("detail"):
             self._attach_detail(assertion_oid, args["detail"],
                                 args.get("actor", INSTANCE_ACTOR))
-        return {"claim": claim_oid, "assertion": assertion_oid}
+        result = {"claim": claim_oid, "assertion": assertion_oid}
+        hints = self._write_hints([(doc, claim_oid, assertion_oid)])
+        if hints:
+            result["hints"] = hints
+        return result
 
     def tool_record(self, args):
         # COG-055: validate the COMPLETE payload before any repository
@@ -486,6 +522,12 @@ class CogitTools:
             if fact.get("detail"):
                 self._attach_detail(landed["assertion"], fact["detail"],
                                     fact.get("actor", INSTANCE_ACTOR))
+        hints = self._write_hints([
+            (doc, landed["claim"], landed["assertion"])
+            for doc, landed in zip(docs, result["facts"])
+        ])
+        if hints:
+            result["hints"] = hints
         return result
 
     def _lifecycle_assertion(self, args, where):

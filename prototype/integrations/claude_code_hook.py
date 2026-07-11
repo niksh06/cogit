@@ -294,8 +294,33 @@ def on_session_start(payload):
           f"+{len(recap['added'])}/-{len(recap['removed'])} beliefs. Recent:")
     for thought in doc["log"]:
         print(f"  {thought['timestamp']}  {thought['message']}")
+    debt_line = _new_debt_line(repo, project)
+    if debt_line:
+        print(debt_line)
     print("cogit: call the `dump` MCP tool for the full picture "
           "(facts + introducers + anchors).")
+
+
+def _new_debt_line(repo, project):
+    """COG-067: surface NEW lint debt in the re-anchor digest — the ratchet
+    baseline is the newest anchor named lint-baseline-*."""
+    try:
+        baselines = [a for a in repo.list_anchors()
+                     if a["name"].startswith("lint-baseline")]
+        if not baselines:
+            return None
+        newest = max(baselines, key=lambda a: (a["created_at"], a["name"]))
+        from lint import lint as run_lint
+        report = run_lint(repo, project=project, since=newest["name"])
+        new = report["baseline"]["new"]
+        if not new:
+            return f"cogit lint: no new debt since {newest['name']} — keep it that way."
+        return (f"cogit lint: {new} NEW finding(s) since {newest['name']} "
+                f"({report['baseline']['new_warnings']} warn) — run lint"
+                f"(project={project or 'all'}, since='{newest['name']}') and fix "
+                "with supersede_fact/retire_fact before the epic closes.")
+    except Exception:  # noqa: BLE001 — the digest must never break a session
+        return None
 
 
 def main():

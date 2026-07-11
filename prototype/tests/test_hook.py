@@ -172,6 +172,20 @@ class HookTests(unittest.TestCase):
     def test_session_start_digest_empty_journal(self):
         self.assertIn("journal is empty", self._digest())
 
+    def test_session_start_digest_reports_new_debt(self):
+        # COG-067: the ratchet reaches the agent without being asked
+        repo = Repository.open(hook.journal_repo({"cwd": self.tmp.name}).cogit_dir)
+        repo.micro_commit(fact_doc("clean"), timestamp=ts(0))
+        repo.anchor("lint-baseline-t0", "HEAD", timestamp=ts(1))
+        digest = self._digest()
+        self.assertIn("no new debt since lint-baseline-t0", digest)
+        noisy = fact_doc("state", obj="ok")
+        noisy["claim"]["subject"] = "spaced out subject"
+        repo.micro_commit(noisy, timestamp=ts(2))
+        digest = self._digest()
+        self.assertIn("NEW finding(s) since lint-baseline-t0", digest)
+        self.assertIn("supersede_fact", digest)
+
     def test_session_start_digest_reanchors(self):
         repo = Repository.open(hook.journal_repo({"cwd": self.tmp.name}).cogit_dir)
         repo.micro_commit(fact_doc("resume"), timestamp=ts(0))
