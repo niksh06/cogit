@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit.errors import CogitError, UserError  # noqa: E402
-from cogit.repo import Repository, compact_rows  # noqa: E402
+from cogit.repo import Repository, compact_rows, normalize_project_slug  # noqa: E402
 from cogit.verify import verify_repository  # noqa: E402
 
 from analytics import analyze  # noqa: E402
@@ -32,6 +32,7 @@ HYGIENE_RULES = ("R11-family-rivalry", "R12-singleton-state", "R13-advisory-mark
 
 
 def health(repo, project=None, since=None, top=10):
+    project = normalize_project_slug(project) if project else project
     status = repo.status()
     rows = repo.facts()["facts"] if status["thought"] else []
     projects = sorted({(row["qualifiers"] or {}).get("project")

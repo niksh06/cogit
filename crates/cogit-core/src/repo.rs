@@ -259,6 +259,20 @@ impl Repository {
         let claim_oid = if let Some(claim_value) = map.get("claim") {
             let mut claim = claim_value.as_object().cloned().unwrap_or_default();
             claim.entry("type".to_owned()).or_insert(json!("claim"));
+            // COG-063: normalize the project qualifier at the write choke point
+            if let Some(project) = claim
+                .get("qualifiers")
+                .and_then(|q| q.get("project"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+            {
+                let normalized = Self::normalize_project_slug(&project);
+                if normalized != project {
+                    if let Some(qualifiers) = claim.get_mut("qualifiers").and_then(Value::as_object_mut) {
+                        qualifiers.insert("project".to_owned(), json!(normalized));
+                    }
+                }
+            }
             let claim_oid = self.store.write(&Value::Object(claim))?;
             if let Some(existing) = assertion.get("claim").and_then(Value::as_str) {
                 if existing != claim_oid {
@@ -1660,6 +1674,17 @@ impl Repository {
         }))
     }
 
+    /// Rule 8 hygiene (COG-063): the project qualifier is a lowercase slug —
+    /// 'Aleph' vs 'aleph' silently split one project into two identity families.
+    pub fn normalize_project_slug(value: &str) -> String {
+        value
+            .trim()
+            .to_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+
     fn row_matches(row: &Value, subject: Option<&str>, predicate: Option<&str>, project: Option<&str>) -> bool {
         if let Some(subject) = subject {
             let actual = row["subject"].as_str().unwrap_or("");
@@ -1682,6 +1707,8 @@ impl Repository {
             }
         }
         if let Some(project) = project {
+            let project = Self::normalize_project_slug(project);
+            let project = project.as_str();
             if row["qualifiers"]["project"].as_str() != Some(project) {
                 return false;
             }

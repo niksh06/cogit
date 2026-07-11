@@ -29,7 +29,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit.errors import CogitError, CorruptionError  # noqa: E402
-from cogit.repo import Repository  # noqa: E402
+from cogit.repo import Repository, normalize_project_slug  # noqa: E402
 
 BANDS = [  # cookbook bands, docs/claim-modeling.md Rule 4
     ("observed", 9800, 10001),
@@ -136,6 +136,7 @@ def belief_outcomes(repo, ref=None, project=None):
     for row in active:
         outcomes[row["assertion"]] = "open"
     if project is not None:
+        project = normalize_project_slug(project)
         keep = {aid for aid, row in rows.items()
                 if (row.get("qualifiers") or {}).get("project") == project}
         outcomes = {aid: v for aid, v in outcomes.items() if aid in keep}

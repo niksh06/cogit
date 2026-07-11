@@ -33,6 +33,18 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def normalize_project_slug(value):
+    """Rule 8 hygiene (COG-063): the project qualifier is a lowercase slug.
+
+    'Aleph' and 'aleph' silently split one project into two identity
+    families (56 stranded beliefs in the field). Normalized at write time
+    in BOTH runtimes (identity parity) and at read-filter time.
+    """
+    if not isinstance(value, str):
+        return value
+    return "-".join(value.strip().lower().split())
+
+
 def compact_rows(rows, max_chars=120):
     """COG-059 compact mode: long prose objects become a bounded preview.
 
@@ -213,6 +225,11 @@ class Repository:
         if "claim" in doc:
             claim = dict(doc["claim"])
             claim.setdefault("type", "claim")
+            qualifiers = claim.get("qualifiers")
+            if isinstance(qualifiers, dict) and isinstance(qualifiers.get("project"), str):
+                # COG-063: case-split projects are a field-proven trap
+                claim = {**claim, "qualifiers": {
+                    **qualifiers, "project": normalize_project_slug(qualifiers["project"])}}
             claim_oid = self.store.write(claim)
             if "claim" in assertion and assertion["claim"] != claim_oid:
                 raise UserError("add-fact: assertion.claim does not match the provided claim object")
@@ -1201,6 +1218,8 @@ class Repository:
                 return False
         if predicate is not None and row["predicate"] != predicate:
             return False
+        if project is not None:
+            project = normalize_project_slug(project)
         if project is not None and row["qualifiers"].get("project") != project:
             return False
         return True

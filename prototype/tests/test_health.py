@@ -83,6 +83,39 @@ class TwoProjectScopingTests(unittest.TestCase):
                          {"open": 0, "superseded": 0, "refuted": 0, "retired": 0})
 
 
+class ProjectSlugNormalizationTests(unittest.TestCase):
+    """COG-063: 'Aleph' vs 'aleph' must never split a project again."""
+
+    def setUp(self):
+        self.tmp, self.repo = make_repo()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_write_normalizes_project_qualifier(self):
+        doc = fact_doc("case", obj="v", when=ts(0))
+        doc["claim"]["qualifiers"]["project"] = "  Aleph  Prime "
+        self.repo.micro_commit(doc, timestamp=ts(0))
+        row = self.repo.facts()["facts"][0]
+        self.assertEqual(row["qualifiers"]["project"], "aleph-prime")
+
+    def test_read_filters_normalize_too(self):
+        doc = fact_doc("case", obj="v", when=ts(0))
+        doc["claim"]["qualifiers"]["project"] = "aleph"
+        self.repo.micro_commit(doc, timestamp=ts(0))
+        for spelled in ("aleph", "Aleph", "ALEPH"):
+            self.assertEqual(len(self.repo.facts(project=spelled)["facts"]), 1, spelled)
+        self.assertEqual(health_mod.health(self.repo, project="Aleph")["project"], "aleph")
+        self.assertEqual(analytics.analyze(self.repo, project="ALEPH")["assertions_seen"], 1)
+
+    def test_case_variants_produce_identical_ids(self):
+        upper = fact_doc("owner", obj="core", when=ts(0))
+        upper["claim"]["qualifiers"]["project"] = "Aleph"
+        lower = fact_doc("owner", obj="core", when=ts(0))
+        lower["claim"]["qualifiers"]["project"] = "aleph"
+        c1, a1 = self.repo.add_fact(upper)
+        c2, a2 = self.repo.add_fact(lower)
+        self.assertEqual((c1, a1), (c2, a2))  # one family, not two
+
+
 class CompactModeTests(unittest.TestCase):
     def setUp(self):
         self.tmp, self.repo = make_repo()

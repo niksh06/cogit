@@ -67,7 +67,8 @@ def digest(value, limit=200) -> str:
 
 def project_slug(payload):
     if os.environ.get("COGIT_PROJECT"):
-        return os.environ["COGIT_PROJECT"]
+        from cogit.repo import normalize_project_slug
+        return normalize_project_slug(os.environ["COGIT_PROJECT"])
     cwd = payload.get("cwd") or os.getcwd()
     return re.sub(r"[^a-z0-9]+", "-", os.path.basename(cwd).lower()).strip("-") or "default"
 

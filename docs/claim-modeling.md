@@ -149,6 +149,12 @@ arg): subjects stay natural entity URIs, and claim identity still
 separates projects because qualifiers are part of the canonical claim.
 Filter with `cogit facts --project cogit` or `--subject 'cogit:*'`.
 
+The project qualifier is a **lowercase slug** and both runtimes enforce
+it at write time (COG-063): `Aleph`, `aleph` and ` Aleph Prime ` all
+normalize to the same slug before the claim is hashed, and read filters
+normalize their input the same way. Field lesson: a case-split once
+stranded 56 beliefs in a parallel family nobody was reading.
+
 ## Rule 9: tasks — track the state, not the content
 
 Cogit works as the provenance substrate of a task tracker, not as the

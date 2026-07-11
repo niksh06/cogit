@@ -106,6 +106,11 @@ COUNT=$($PY facts --project interop --json | $PYBIN -c 'import json,sys; print(l
 [ "$COUNT" = "1" ] || fail "python project filter sees $COUNT facts"
 COUNT=$($RUST facts --subject 'interop:*' --json | $PYBIN -c 'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
 [ "$COUNT" = "1" ] || fail "rust subject filter sees $COUNT facts"
+# COG-063: mixed-case project input normalizes identically in both runtimes
+COUNT=$($PY facts --project INTEROP --json | $PYBIN -c 'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
+[ "$COUNT" = "1" ] || fail "python case-normalized filter sees $COUNT facts"
+COUNT=$($RUST facts --project Interop --json | $PYBIN -c 'import json,sys; print(len(json.load(sys.stdin)["facts"]))')
+[ "$COUNT" = "1" ] || fail "rust case-normalized filter sees $COUNT facts"
 ok
 
 step "negation renders as NOT in both runtimes (COG-040)"
