@@ -1319,6 +1319,58 @@ class Repository:
             "position": self.status(),
         }
 
+    def search(self, pattern: str, ref: str = None, project: str = None,
+               history: bool = False, limit: int = 50):
+        """Case-insensitive substring search over beliefs (COG-068) —
+        cogit's `git grep`: subjects, predicates, objects, qualifier
+        values and annotation bodies. Finds the ids; the graph tools
+        (blame_fact, premises, families) take it from there. Deliberately
+        NOT retrieval memory: no ranking, no embeddings (ADR-0002).
+
+        history=True widens the corpus from the ref's ACTIVE beliefs to
+        every assertion its ancestry ever held; each match carries an
+        `active` flag either way.
+        """
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise UserError("search: a non-empty pattern is required")
+        needle = pattern.lower()
+        status = self.status()
+        if ref is None and status["thought"] is None:
+            return {"pattern": pattern, "project": project, "history": history,
+                    "total": 0, "matches": [], "truncated": 0}
+        thought_oid = self.resolve(ref or "HEAD")
+        active_ids = self._mindset_assertions(thought_oid)
+        ids = set(active_ids)
+        if history:
+            for thought in self._ancestry(thought_oid).values():
+                ids |= set(self._read_typed(thought["mindset"], "mindset")["assertions"])
+        annotations = self.annotations_index()
+        matches = []
+        for aid in sorted(ids):
+            row = self._fact_row(aid)
+            if project is not None and not self._row_matches(row, project=project):
+                continue
+            fields = []
+            if needle in row["subject"].lower():
+                fields.append("subject")
+            if needle in row["predicate"].lower():
+                fields.append("predicate")
+            if needle in str(row["object"]).lower():
+                fields.append("object")
+            for key, value in (row["qualifiers"] or {}).items():
+                if needle in str(value).lower():
+                    fields.append(f"qualifier:{key}")
+            if any(needle in str(anno.get("body", "")).lower()
+                   for anno in annotations.get(aid, [])):
+                fields.append("annotation")
+            if not fields:
+                continue
+            matches.append({**row, "active": aid in active_ids, "matched_in": fields})
+        total = len(matches)
+        shown = matches[: max(0, limit)]
+        return {"pattern": pattern, "project": project, "history": history,
+                "total": total, "matches": shown, "truncated": total - len(shown)}
+
     def show(self, ref: str = None):
         """Thought header plus its active facts (git-show analogue)."""
         thought_oid = self.resolve(ref or "HEAD")

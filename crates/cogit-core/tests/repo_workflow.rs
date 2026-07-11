@@ -419,3 +419,33 @@ fn tolerant_reader_loads_future_objects() {
         && f["severity"] == "warning"));
     assert!(!findings.iter().any(|f| f["severity"] == "error"));
 }
+
+#[test]
+fn search_greps_beliefs_across_fields() {
+    let (_dir, repo) = make_repo();
+    let mut doc = fact_doc("root_cause", 9000);
+    doc["claim"]["subject"] = json!("bug:orders-500");
+    doc["claim"]["object"] = json!("cache invalidation storm");
+    let v1 = repo.micro_commit(&doc, None, None, Some(&ts(0))).unwrap();
+    // case-insensitive, field attribution, active flag
+    let hit = repo.search("CACHE", None, None, false, 50).unwrap();
+    assert_eq!(hit["total"], json!(1));
+    assert_eq!(hit["matches"][0]["matched_in"], json!(["object"]));
+    assert_eq!(hit["matches"][0]["active"], json!(true));
+    // project scope excludes, history includes superseded
+    assert_eq!(repo.search("cache", None, Some("ghost"), false, 50).unwrap()["total"], json!(0));
+    let assertion = json!({
+        "type": "assertion", "status": "asserted",
+        "source": {"type": "tool", "uri": "test:grep"},
+        "confidence_bps": 9800, "asserted_at": ts(1),
+        "actor": "tester", "method": {"type": "fixture"},
+    });
+    let a1 = v1["assertion"].as_str().unwrap();
+    repo.supersede_fact(a1, &json!("retry storm"), &assertion, None, Some(&ts(1))).unwrap();
+    assert_eq!(repo.search("invalidation", None, None, false, 50).unwrap()["total"], json!(0));
+    let history = repo.search("invalidation", None, None, true, 50).unwrap();
+    assert_eq!(history["total"], json!(1));
+    assert_eq!(history["matches"][0]["active"], json!(false));
+    // empty pattern is a clean error
+    assert!(repo.search("  ", None, None, false, 50).is_err());
+}

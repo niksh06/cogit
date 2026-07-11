@@ -1895,6 +1895,88 @@ impl Repository {
     /// One-call reader surface: active facts, first introducers, anchors,
     /// branches, bounded log, and a recap block — everything a context-free
     /// agent needs to re-anchor without porcelain archaeology.
+    /// Case-insensitive substring search over beliefs (COG-068) — cogit's
+    /// `git grep`: subjects, predicates, objects, qualifier values and
+    /// annotation bodies. `history` widens from ACTIVE beliefs to every
+    /// assertion the ancestry ever held; matches carry an `active` flag.
+    pub fn search(
+        &self,
+        pattern: &str,
+        r#ref: Option<&str>,
+        project: Option<&str>,
+        history: bool,
+        limit: usize,
+    ) -> Result<Value> {
+        if pattern.trim().is_empty() {
+            return user_err("search: a non-empty pattern is required");
+        }
+        let needle = pattern.to_lowercase();
+        let status = self.status()?;
+        if r#ref.is_none() && status["thought"].is_null() {
+            return Ok(json!({"pattern": pattern, "project": project, "history": history,
+                             "total": 0, "matches": [], "truncated": 0}));
+        }
+        let thought_oid = self.resolve(r#ref.unwrap_or("HEAD"))?;
+        let active_ids = self.mindset_assertions(Some(&thought_oid))?;
+        let mut ids: BTreeSet<String> = active_ids.clone();
+        if history {
+            for thought in self.ancestry(&thought_oid)?.values() {
+                let mindset = self.read_typed(thought["mindset"].as_str().unwrap_or(""), "mindset")?;
+                ids.extend(arr_strings(&mindset["assertions"]));
+            }
+        }
+        let annotations = self.annotations_index()?;
+        let mut matches: Vec<Value> = Vec::new();
+        for aid in &ids {
+            let mut row = self.fact_row(aid)?;
+            if project.is_some() && !Self::row_matches(&row, None, None, project) {
+                continue;
+            }
+            let mut fields: Vec<String> = Vec::new();
+            if row["subject"].as_str().unwrap_or("").to_lowercase().contains(&needle) {
+                fields.push("subject".into());
+            }
+            if row["predicate"].as_str().unwrap_or("").to_lowercase().contains(&needle) {
+                fields.push("predicate".into());
+            }
+            let object_text = match &row["object"] {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            if object_text.to_lowercase().contains(&needle) {
+                fields.push("object".into());
+            }
+            if let Some(qualifiers) = row["qualifiers"].as_object() {
+                for (key, value) in qualifiers {
+                    let text = match value {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    if text.to_lowercase().contains(&needle) {
+                        fields.push(format!("qualifier:{key}"));
+                    }
+                }
+            }
+            if annotations.get(aid).is_some_and(|entries| {
+                entries.iter().any(|anno| {
+                    anno["body"].as_str().unwrap_or("").to_lowercase().contains(&needle)
+                })
+            }) {
+                fields.push("annotation".into());
+            }
+            if fields.is_empty() {
+                continue;
+            }
+            row["active"] = json!(active_ids.contains(aid));
+            row["matched_in"] = json!(fields);
+            matches.push(row);
+        }
+        let total = matches.len();
+        let shown: Vec<Value> = matches.into_iter().take(limit).collect();
+        Ok(json!({"pattern": pattern, "project": project, "history": history,
+                  "total": total, "matches": shown, "truncated": total - shown.len()}))
+    }
+
     pub fn dump(
         &self,
         r#ref: Option<&str>,

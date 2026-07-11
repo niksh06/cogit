@@ -72,12 +72,14 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-063 | Project slug normalization (both runtimes, write choke point + case-insensitive read filters + hook env) + live migration Aleph→aleph (56 beliefs re-homed in one atomic thought, provenance preserved, reasons recorded) | `issues/COG-063.md`, cookbook Rule 8 | `ProjectSlugNormalizationTests` (3: write normalize, read filters incl. health/analytics, identical ids across case variants), interop case-filter parity; live post-check Aleph=0 / aleph=287, verify healthy |
 | COG-064 + COG-065 | Ceremony cut from field feedback: `detail` param — rich nuance lands as a same-call annotation on the assertion (lint R2 points to it); MCP defaults source=agent:<instance>, confidence 9000/9900 by kind — minimal fact = 4 fields | `issues/COG-064.md`, `issues/COG-065.md` | MCP test: 4-field fact + detail in one call → active row with defaults, annotation readable; 219 py tests green |
 | COG-067 | Discipline as a feedback loop: write-time lint `hints` in add_fact/record responses (advisory, lean when clean) + lint-ratchet line in the SessionStart digest (lint-baseline-* anchors) | `issues/COG-067.md` | MCP hint test (prose→R2 hint, clean→no key, batch aggregates), hook digest test (no-new-debt / N-new-findings lines); 221 py tests green |
+| COG-068 | `search` — cogit's git-grep: case-insensitive substring over subjects/predicates/objects/qualifier values/annotation bodies, `--history` widens to full ancestry with `active` flags, project scope, exact totals under `--limit`; both runtimes + CLI contract + MCP (27 tools) | `issues/COG-068.md` — resolved inline | `test_search.py` (6), rust `search_greps_beliefs_across_fields`, interop step 22 (match sets equal across runtimes); live smoke: 'epss' → 16 matches on the shared journal |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-061 | build_state quadratic object reads: 185 thoughts = 1.38s, 1850 = 145.7s (measured in COG-060); memoized row decoding / set-diff pass | P2 (entry criterion met; ETag already removed unchanged-poll waste) | `issues/COG-061.md` |
+| COG-069 | Engram bridge — semantic layer OVER the journal via OKF snapshot export (cogit stays grep-only per ADR-0002) | P3 (parked; entry: a real semantic miss search can't cover) | `issues/COG-069.md` |
 | COG-050 | Graph queries over premises: taint closure, maximin support (entry: measured premise adoption) | P2 (after COG-049) | `issues/COG-050.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 

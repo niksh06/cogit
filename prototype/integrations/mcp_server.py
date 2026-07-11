@@ -257,6 +257,27 @@ TOOLS = [
         ),
     },
     {
+        "name": "search",
+        "description": (
+            "cogit's git-grep (COG-068): case-insensitive substring search over beliefs — "
+            "subjects, predicates, objects, qualifier values and annotation bodies. Returns "
+            "fact rows with ids for the graph tools (blame_fact, premises, families). "
+            "history=true widens from ACTIVE beliefs to everything the ancestry ever held "
+            "(each match carries an 'active' flag). Deliberately not semantic search — "
+            "no ranking, no embeddings (ADR-0002)."
+        ),
+        "inputSchema": _schema(
+            {
+                "pattern": {"type": "string"},
+                "ref": REF,
+                "project": {"type": "string"},
+                "history": {"type": "boolean"},
+                "limit": {"type": "integer", "minimum": 0, "default": 50},
+            },
+            required=("pattern",),
+        ),
+    },
+    {
         "name": "dump",
         "description": (
             "One-call reader surface (COG-042): active facts (negation-explicit), first "
@@ -623,6 +644,11 @@ class CogitTools:
                             severity=args.get("severity"),
                             limit=args.get("limit", 50),
                             summary=args.get("summary", False))
+
+    def tool_search(self, args):
+        return self.repo.search(
+            args.get("pattern", ""), ref=args.get("ref"), project=args.get("project"),
+            history=args.get("history", False), limit=args.get("limit", 50))
 
     def tool_dump(self, args):
         return self.repo.dump(args.get("ref"), project=args.get("project"),

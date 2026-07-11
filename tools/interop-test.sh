@@ -188,6 +188,13 @@ RSP=$($RUST recap "$REFT" --json | $PYBIN -c 'import json,sys; d=json.load(sys.s
 echo "$PYP" | grep -q "cycle complete" || fail "retire reason not recoverable: $PYP"
 ok
 
+step "search agrees across runtimes (COG-068)"
+PYS=$($PY search "derived" --history --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([d["total"], sorted((m["assertion"], m["active"], ",".join(m["matched_in"])) for m in d["matches"])]))')
+RSS=$($RUST search "derived" --history --json | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([d["total"], sorted((m["assertion"], m["active"], ",".join(m["matched_in"])) for m in d["matches"])]))')
+[ "$PYS" = "$RSS" ] || fail "search disagrees: $PYS vs $RSS"
+[ "$PYS" != '[0, []]' ] || fail "search found nothing for a known token"
+ok
+
 step "dump agrees across runtimes (COG-042; rows carry asserted_at+method, COG-059)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')

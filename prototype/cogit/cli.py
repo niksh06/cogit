@@ -517,6 +517,27 @@ def cmd_recap(args):
     return 0
 
 
+def cmd_search(args):
+    repo = _open_repo(args)
+    result = repo.search(args.pattern, ref=args.ref, project=args.project,
+                         history=args.history, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, sort_keys=True, ensure_ascii=False))
+        return 0
+    print(f"search '{result['pattern']}': {result['total']} match(es)"
+          + (f" (project {result['project']})" if result['project'] else "")
+          + (" [history]" if result["history"] else ""))
+    for row in result["matches"]:
+        flag = " " if row["active"] else "×"
+        obj = str(row["object"])
+        obj = obj if len(obj) <= 60 else obj[:57] + "…"
+        print(f"{flag} {row['subject']} {row['predicate']} = {obj}"
+              f"  <- {','.join(row['matched_in'])}  {row['assertion'][:17]}")
+    if result["truncated"]:
+        print(f"  … {result['truncated']} more (raise --limit)")
+    return 0
+
+
 def cmd_dump(args):
     repo = _open_repo(args)
     result = repo.dump(args.ref, project=args.project, since=args.since,
@@ -904,6 +925,18 @@ def build_parser():
     p.add_argument("ref", nargs="?")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser(
+        "search",
+        help="case-insensitive substring search over beliefs — cogit's git-grep (COG-068)")
+    p.add_argument("pattern")
+    p.add_argument("--ref", default=None)
+    p.add_argument("--project", help="scope to the project qualifier")
+    p.add_argument("--history", action="store_true",
+                   help="widen from active beliefs to every assertion in the ancestry")
+    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_search)
 
     p = sub.add_parser(
         "dump", help="one-call reader surface: facts+introducers+anchors+log+recap (JSON only)")

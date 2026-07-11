@@ -174,6 +174,23 @@ Rules:
   nothing does.
 - Same atomicity/staleness rules as `supersede-fact`.
 
+### `cogit search <pattern>` (COG-068)
+
+Case-insensitive substring search over beliefs — cogit's `git grep`.
+
+Rules:
+
+- Searches subjects, predicates, objects (stringified), qualifier values
+  and annotation bodies of the ref's ACTIVE beliefs; `--history` widens
+  the corpus to every assertion the ancestry ever held.
+- Each match is a full fact row plus `active` (bool) and `matched_in`
+  (list of field names); `--project` scopes by the project qualifier
+  (case-normalized, COG-063).
+- `--limit` caps the detail rows; `total`/`truncated` stay exact.
+- Substring only, no ranking, no embeddings — semantic retrieval is
+  explicitly out of scope (ADR-0002); this finds ids for `blame-fact`,
+  premises walks and family history.
+
 ### `cogit commit-thought --message <text> --author <id>`
 
 Creates a mindset and thought from the index, then advances the current ref.

@@ -283,6 +283,20 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// case-insensitive substring search over beliefs — cogit's git-grep (COG-068)
+    Search {
+        pattern: String,
+        #[arg(long = "ref")]
+        r#ref: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        history: bool,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
     /// one-call reader surface: facts+introducers+anchors+log+recap (JSON only)
     Dump {
         r#ref: Option<String>,
@@ -1131,6 +1145,34 @@ fn run(cli: Cli) -> Result<i32> {
                 short(position["thought"].as_str().unwrap_or("null")),
                 merge_note
             );
+            Ok(0)
+        }
+        Cmd::Search { pattern, r#ref, project, history, limit, json } => {
+            let repo = open_repo(&cli.repo)?;
+            let result = repo.search(&pattern, r#ref.as_deref(), project.as_deref(), history, limit)?;
+            if json {
+                println!("{result}");
+            } else {
+                println!(
+                    "search '{}': {} match(es)",
+                    result["pattern"].as_str().unwrap_or(""),
+                    result["total"]
+                );
+                for row in result["matches"].as_array().cloned().unwrap_or_default() {
+                    let flag = if row["active"].as_bool().unwrap_or(false) { ' ' } else { '×' };
+                    let fields: Vec<String> = row["matched_in"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                        .unwrap_or_default();
+                    println!(
+                        "{flag} {} {} = {}  <- {}",
+                        row["subject"].as_str().unwrap_or(""),
+                        row["predicate"].as_str().unwrap_or(""),
+                        row["object"],
+                        fields.join(",")
+                    );
+                }
+            }
             Ok(0)
         }
         Cmd::Dump { r#ref, project, since, limit_log } => {
