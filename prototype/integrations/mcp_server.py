@@ -257,6 +257,37 @@ TOOLS = [
         ),
     },
     {
+        "name": "taint",
+        "description": (
+            "Derivation-graph recall query (COG-050): a source turned out poisoned — which "
+            "conclusions rest on it, transitively, via premises edges (ADR-0013)? Seed is an "
+            "assertion id/prefix OR a source-uri substring ('this tool/document fed lies'). "
+            "Output rows are ready for a refute_fact/retire_fact cascade; includes the "
+            "premise-adoption share so you know how complete the graph is."
+        ),
+        "inputSchema": _schema(
+            {
+                "source": {"type": "string",
+                           "description": "assertion id/prefix or source-uri substring"},
+                "ref": REF,
+                "history": {"type": "boolean",
+                            "description": "widen from active beliefs to full ancestry"},
+            },
+            required=("source",),
+        ),
+    },
+    {
+        "name": "support",
+        "description": (
+            "Maximin evidence strength (COG-050): over all derivation paths from evidence "
+            "leaves to this conclusion, the path whose WEAKEST link is strongest — classic "
+            "widest-path/bottleneck semantics. Returns support_bps, the winning chain and "
+            "the bottleneck assertion (what to verify first to strengthen the belief)."
+        ),
+        "inputSchema": _schema({"assertion_id": OID, "ref": REF},
+                               required=("assertion_id",)),
+    },
+    {
         "name": "search",
         "description": (
             "cogit's git-grep (COG-068): case-insensitive substring search over beliefs — "
@@ -644,6 +675,15 @@ class CogitTools:
                             severity=args.get("severity"),
                             limit=args.get("limit", 50),
                             summary=args.get("summary", False))
+
+    def tool_taint(self, args):
+        from derivation import taint  # lazy: script-dir import
+        return taint(self.repo, args.get("source", ""), ref=args.get("ref"),
+                     history=args.get("history", False))
+
+    def tool_support(self, args):
+        from derivation import support  # lazy: script-dir import
+        return support(self.repo, args.get("assertion_id", ""), ref=args.get("ref"))
 
     def tool_search(self, args):
         return self.repo.search(

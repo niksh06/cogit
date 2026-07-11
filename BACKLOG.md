@@ -74,13 +74,13 @@ Story references point to `user_stories/agent-user-stories.md`.
 | COG-067 | Discipline as a feedback loop: write-time lint `hints` in add_fact/record responses (advisory, lean when clean) + lint-ratchet line in the SessionStart digest (lint-baseline-* anchors) | `issues/COG-067.md` | MCP hint test (prose→R2 hint, clean→no key, batch aggregates), hook digest test (no-new-debt / N-new-findings lines); 221 py tests green |
 | COG-068 | `search` — cogit's git-grep: case-insensitive substring over subjects/predicates/objects/qualifier values/annotation bodies, `--history` widens to full ancestry with `active` flags, project scope, exact totals under `--limit`; both runtimes + CLI contract + MCP (27 tools) | `issues/COG-068.md` — resolved inline | `test_search.py` (6), rust `search_greps_beliefs_across_fields`, interop step 22 (match sets equal across runtimes); live smoke: 'epss' → 16 matches on the shared journal |
 | COG-061 | build_state complexity fix: mindset id-sets + one row decode per assertion + immutable-object caches (content-addressed => trivially correct); fact_row/mindset_assertions promoted to public porcelain | `issues/COG-061.md` | re-benchmark: 1x 1383→241ms cold, 10x 145.7s→7-13.5s cold / ~3s incremental; residual O(NxM) term documented (mindset bytes + set diffs); viewer tests 16/16 |
+| COG-050 | Derivation-graph queries: `taint` (reversed-premise closure, seeds by id or source-uri, history mode with active flags, recall-cascade-ready rows) + `support` (maximin/widest-path strength with bottleneck chain) — integrations + MCP (29 tools) | `issues/COG-050.md` | `test_derivation.py` (8: diamond/chain fixtures exact closures and maximin values, source-uri seeding, history reaches retired, clean errors); live 2026-07-11: adoption 28/446, real chain support 10000 bps, leaf taint = 14 downstream |
 
 ## Open — next
 
 | ID | Title | Priority | Refs |
 | --- | --- | --- | --- |
 | COG-069 | Engram bridge — semantic layer OVER the journal via OKF snapshot export (cogit stays grep-only per ADR-0002) | P3 (parked; entry: a real semantic miss search can't cover) | `issues/COG-069.md` |
-| COG-050 | Graph queries over premises: taint closure, maximin support (entry: measured premise adoption) | P2 (after COG-049) | `issues/COG-050.md` |
 | COG-044 | Coverage pilot 1+3 SHIPPED (owner decision 2026-07-04): selective event capture default in hook (git commits + suite status, supersede semantics), MCP `record` batch tool, local hook wiring — measuring; re-run COG-041 real track ~2026-07-18 | P1 (measuring) | `issues/COG-044.md`; `tests/test_hook.py` selective tests, MCP workflow record step |
 
 ## Open — later (P1/P2 stories, unscoped)
