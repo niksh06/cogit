@@ -236,6 +236,29 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(is_error)
         self.assertEqual(log["thoughts"][0]["id"], batch["thought"])
 
+    def test_minimal_fact_with_detail_lands_in_one_call(self):
+        # COG-064/065: ceremony cut — defaults for source/confidence, rich
+        # nuance as a same-call annotation instead of a second tool call
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, added = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "svc:x", "predicate": "verdict",
+            "object": "adopt", "commit": True,
+            "detail": "Chosen over B and C because the failure mode is recoverable; "
+                      "B lost on latency, C on operational complexity.",
+        })
+        self.assertFalse(is_error, added)
+        is_error, facts = self.client.call_tool("facts", {"subject": "svc:x"})
+        self.assertFalse(is_error)
+        row = facts["facts"][0]
+        self.assertEqual(row["confidence_bps"], 9000)      # default band
+        self.assertEqual(row["source"], "agent")           # default source
+        self.assertTrue(row["source_uri"].startswith("agent-"))
+        is_error, notes = self.client.call_tool("annotations", {
+            "target_id": added["assertion"]})
+        self.assertFalse(is_error, notes)
+        bodies = [a["body"] for a in notes["annotations"]]
+        self.assertTrue(any("recoverable" in b for b in bodies), notes)
+
     def test_record_failure_modes_never_stage(self):
         # regression sweep (report 2026-07-10): EVERY failure mode — schema,
         # secret, premises, removals, types — leaves zero staging, HEAD unmoved

@@ -61,7 +61,8 @@ def check_row(row, shared=True):
         if words > 12 or len(obj) > 100:
             add("R2-prose-object", "warn",
                 f"object is prose ({words} words, {len(obj)} chars) — the object is a "
-                "value; long detail belongs in an annotation or a document")
+                "value; keep the nuance by passing detail= (one call, lands as an "
+                "annotation on the assertion, COG-064)")
         elif ";" in obj or " and " in obj:
             add("R1-multi-proposition", "warn",
                 "object joins several propositions — split into separate claims")

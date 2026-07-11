@@ -52,7 +52,9 @@ TOOLS = [
         "description": (
             "Record a belief: write a claim and a provenance-bearing assertion. With commit=true "
             "this is an ATOMIC micro-commit that bypasses the shared index — safe for parallel "
-            "agents on one journal. One proposition per claim; object is a value, not a sentence. "
+            "agents on one journal. One proposition per claim; object is a value, not a sentence — "
+            "rich nuance goes in 'detail' (lands as an annotation on the assertion, same call). "
+            "Defaults: source = agent:<instance>, confidence 9000 (tool_observation 9900). "
             "In a shared journal always set project."
         ),
         "inputSchema": _schema(
@@ -68,14 +70,19 @@ TOOLS = [
                 "negates": {**OID, "description": "claim id this claim negates"},
                 "premises": {"type": "array", "items": OID,
                              "description": "assertion ids this belief derives from (ADR-0013)"},
-                "source": {"type": "string", "description": "type[:uri], e.g. agent:session-x"},
-                "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+                "source": {"type": "string",
+                           "description": "type[:uri]; default: agent:<instance> (COG-065)"},
+                "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000,
+                                   "description": "default: 9000, tool_observation 9900"},
                 "actor": {"type": "string", "description": "default: per-session instance id"},
                 "method": {"type": "string", "default": "mcp"},
+                "detail": {"type": "string",
+                           "description": "rich nuance — becomes an annotation on the "
+                                          "assertion in the same call (COG-064)"},
                 "commit": {"type": "boolean", "description": "atomic micro-commit (parallel-safe)"},
                 "message": {"type": "string", "description": "thought message when commit=true"},
             },
-            required=("kind", "subject", "predicate", "object", "source", "confidence_bps"),
+            required=("kind", "subject", "predicate", "object"),
         ),
     },
     {
@@ -369,8 +376,10 @@ class CogitTools:
 
     # -- tools -----------------------------------------------------------------
 
-    REQUIRED_FACT_FIELDS = ("kind", "subject", "predicate", "object",
-                            "source", "confidence_bps")
+    REQUIRED_FACT_FIELDS = ("kind", "subject", "predicate", "object")
+
+    # COG-065: ceremony cut — sane defaults, lint still nudges outliers
+    DEFAULT_CONFIDENCE = {"tool_observation": 9900}  # others: 9000 ("stated")
 
     def _validated_fact_args(self, fact, where):
         """Shape-check a fact payload BEFORE any repository mutation (COG-055):
@@ -381,7 +390,7 @@ class CogitTools:
         missing = [key for key in self.REQUIRED_FACT_FIELDS if key not in fact]
         if missing:
             raise CogitError(f"{where} is missing required field(s): {', '.join(missing)}")
-        if not isinstance(fact["source"], str) or not fact["source"]:
+        if "source" in fact and (not isinstance(fact["source"], str) or not fact["source"]):
             raise CogitError(f"{where}.source must be a non-empty string 'type[:uri]'")
         if "qualifiers" in fact and not isinstance(fact["qualifiers"], dict):
             raise CogitError(f"{where}.qualifiers must be an object")
@@ -390,7 +399,8 @@ class CogitTools:
         return fact
 
     def _build_fact_doc(self, args):
-        source_type, _sep, source_uri = args["source"].partition(":")
+        source = args.get("source") or f"agent:{INSTANCE_ACTOR}"
+        source_type, _sep, source_uri = source.partition(":")
         source = {"type": source_type}
         if source_uri:
             source["uri"] = source_uri
@@ -412,7 +422,8 @@ class CogitTools:
             "type": "assertion",
             "status": "asserted",
             "source": source,
-            "confidence_bps": args["confidence_bps"],
+            "confidence_bps": args.get(
+                "confidence_bps", self.DEFAULT_CONFIDENCE.get(args["kind"], 9000)),
             "asserted_at": _now(),
             "actor": args.get("actor", INSTANCE_ACTOR),
             "method": {"type": args.get("method", "mcp")},
@@ -422,12 +433,26 @@ class CogitTools:
                 {self.repo.expand_object_id(p) for p in args["premises"]})
         return {"claim": claim, "assertion": assertion}
 
+    def _attach_detail(self, assertion_oid, detail, actor):
+        """COG-064: rich nuance in the SAME call — the atomic object stays a
+        value, the prose lands as an annotation on the assertion."""
+        if not isinstance(detail, str) or not detail.strip():
+            raise CogitError("detail must be a non-empty string when provided")
+        self.repo.annotate(assertion_oid, detail, namespace="detail", author=actor)
+
     def tool_add_fact(self, args):
         doc = self._build_fact_doc(self._validated_fact_args(args, "add_fact"))
         if args.get("commit"):
             # atomic micro-commit: parallel-safe by construction (COG-035)
-            return self.repo.micro_commit(doc, message=args.get("message"))
+            result = self.repo.micro_commit(doc, message=args.get("message"))
+            if args.get("detail"):
+                self._attach_detail(result["assertion"], args["detail"],
+                                    args.get("actor", INSTANCE_ACTOR))
+            return result
         claim_oid, assertion_oid = self.repo.add_fact(doc)
+        if args.get("detail"):
+            self._attach_detail(assertion_oid, args["detail"],
+                                args.get("actor", INSTANCE_ACTOR))
         return {"claim": claim_oid, "assertion": assertion_oid}
 
     def tool_record(self, args):
@@ -455,8 +480,13 @@ class CogitTools:
             })
         docs = [self._build_fact_doc(self._validated_fact_args(fact, f"record: facts[{pos}]"))
                 for pos, fact in enumerate(facts)]
-        return self.repo.micro_commit_batch(
+        result = self.repo.micro_commit_batch(
             docs, prepared, message, author=args.get("author", INSTANCE_ACTOR))
+        for fact, landed in zip(facts, result["facts"]):
+            if fact.get("detail"):
+                self._attach_detail(landed["assertion"], fact["detail"],
+                                    fact.get("actor", INSTANCE_ACTOR))
+        return result
 
     def _lifecycle_assertion(self, args, where):
         """Assertion object for supersede/refute (COG-056), validated up front."""
