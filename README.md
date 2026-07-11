@@ -121,8 +121,10 @@ the thought that introduced it. When a belief changes state, use the
 atomic lifecycle operations (COG-056): `supersede_fact` (new value, same
 claim family), `refute_fact` (structural negation, invariant 25) and
 `retire_fact` (explicit removal without asserting falsity) — each is one
-all-or-nothing thought. What deserves to be a fact — and what does
-not — is `docs/claim-modeling.md`.
+all-or-nothing thought. How to SHAPE one claim is
+`docs/claim-modeling.md`; the operating discipline around the journal —
+when to write, when not to, what keeps a shared journal from becoming a
+dump — is `docs/journal-discipline.md`.
 
 ## Watch a journal (web viewer)
 
@@ -141,7 +143,7 @@ container (`docker compose up -d`).
 Run the test suites:
 
 ```sh
-cd prototype && python3 -m unittest discover -s tests   # 166 tests
+cd prototype && python3 -m unittest discover -s tests   # 219 tests
 cargo test                                              # core + golden vectors
 sh tools/interop-test.sh                                # Python <-> Rust on one repo
 ```

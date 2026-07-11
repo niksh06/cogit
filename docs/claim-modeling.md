@@ -1,5 +1,9 @@
 # Claim Modeling Cookbook
 
+> Companion: `docs/journal-discipline.md` — the operating rules AROUND
+> the journal (when to write, lifecycle duties, hygiene); this file is
+> about shaping one claim well.
+
 created_datetime: 2026-07-02T21:40:00+03:00
 updated_datetime: 2026-07-02T21:40:00+03:00
 status: Draft (COG-032)
