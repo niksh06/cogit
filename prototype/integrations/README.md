@@ -55,15 +55,18 @@ is published to `127.0.0.1` only. Override the journal path with
 ## Claude Code hook (`claude_code_hook.py`) — selective capture + re-anchor
 
 Default capture is **selective** (COG-044 pilot): only durable events
-become staged beliefs — git commits (`git:<project> head_commit`, the
-previous value is superseded) and test-suite outcomes
-(`test:<project> suite_status = green|red`). One thought per assistant
-turn commits whatever was staged. Set `COGIT_CAPTURE=all` for the old
-firehose mode (every tool call — noisy, COG-012). For batch manual
-journaling the MCP server offers `record` (N facts + optional removals ->
-one thought, atomically: the whole batch lands or repository state is
-unchanged; it bypasses the shared index and refuses while a staging
-session is in flight — COG-055).
+are captured — git commits (`git:<project> head_commit`, the previous
+value is superseded) and test-suite outcomes
+(`test:<project> suite_status = green|red`). Captures go to a
+PER-SESSION buffer file, never the shared index (COG-062): parallel
+sessions cannot trip each other's dirty-index refusals or absorb each
+other's captures. On Stop the buffer publishes as ONE atomic thought
+(batch micro-commit, correct per-session author); if the index happens
+to be busy with someone's explicit staging, the buffer simply survives
+until the next turn — captures are never lost. Set `COGIT_CAPTURE=all`
+for the old firehose mode (every tool call — noisy, COG-012). For batch
+manual journaling the MCP server offers `record` (N facts + optional
+removals -> one thought, atomically — COG-055).
 
 A third mode, `session-start` (COG-043), prints a compact belief digest
 (via `dump`) into every new session's context — the agent re-anchors

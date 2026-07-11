@@ -104,6 +104,71 @@ class HookTests(unittest.TestCase):
         self.assertEqual([(r["object"], r["qualifiers"]["runner"]) for r in rows],
                          [("green", "unittest")])
 
+    def _commit_payload(self, session, sha="abc1234", subject="fix things"):
+        return {
+            "cwd": self.tmp.name,
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m 'x'"},
+            "tool_response": f"[main {sha}] {subject}\n 1 file changed",
+            "session_id": session,
+        }
+
+    def test_capture_never_touches_the_shared_index(self):
+        # COG-062: the parallel-hostility root cause — hook staging — is gone
+        os.environ["COGIT_PROJECT"] = "demo"
+        self.addCleanup(os.environ.pop, "COGIT_PROJECT", None)
+        payload = self._commit_payload("sess-a")
+        hook.on_post_tool_use(payload)
+        repo = Repository.open(self.tmp.name)
+        status = repo.status()
+        self.assertEqual(status["staged"], [])   # buffered, not staged
+        self.assertEqual(status["removed"], [])
+        hook.on_stop(payload)
+        status = repo.status()
+        self.assertEqual(status["staged"], [])   # published atomically
+        self.assertIsNotNone(status["thought"])
+
+    def test_parallel_sessions_do_not_absorb_each_other(self):
+        os.environ["COGIT_PROJECT"] = "demo"
+        self.addCleanup(os.environ.pop, "COGIT_PROJECT", None)
+        a = self._commit_payload("sessionA-11112222", "aaa1111", "from A")
+        b = {
+            "cwd": self.tmp.name, "tool_name": "Bash",
+            "tool_input": {"command": "python -m unittest discover"},
+            "tool_response": "Ran 5 tests\nOK", "session_id": "sessionB-33334444",
+        }
+        hook.on_post_tool_use(a)
+        hook.on_post_tool_use(b)
+        hook.on_stop(a)  # A's turn ends first
+        repo = Repository.open(self.tmp.name)
+        rows = {r["subject"]: r for r in repo.facts()["facts"]}
+        self.assertIn("git:demo", rows)
+        self.assertNotIn("test:demo", rows)  # B's capture is NOT absorbed by A
+        self.assertEqual(rows["git:demo"]["actor"], "claude-code-sessionA")
+        self.assertEqual(repo.log()[0]["author"], "claude-code-sessionA")
+        hook.on_stop(b)
+        rows = {r["subject"]: r for r in repo.facts()["facts"]}
+        self.assertEqual(rows["test:demo"]["actor"], "claude-code-sessionB")
+        self.assertEqual(repo.log()[0]["author"], "claude-code-sessionB")
+
+    def test_dirty_index_defers_but_never_loses_captures(self):
+        os.environ["COGIT_PROJECT"] = "demo"
+        self.addCleanup(os.environ.pop, "COGIT_PROJECT", None)
+        payload = self._commit_payload("sess-defer")
+        repo = Repository.open(hook.journal_repo(payload).cogit_dir)
+        _claim, staged = repo.add_fact(fact_doc("explicit-staging", when=ts(0)))
+        hook.on_post_tool_use(payload)
+        buffer = hook.buffer_path(repo, payload)
+        with self.assertRaises(hook.CogitError):
+            hook.on_stop(payload)  # batch refuses the dirty index...
+        self.assertTrue(os.path.exists(buffer))  # ...and the buffer SURVIVES
+        self.assertEqual(repo.status()["staged"], [staged])  # staging untouched
+        repo.remove_fact(staged, "unstage")  # the explicit session finishes
+        hook.on_stop(payload)  # retry next turn: captures land
+        self.assertFalse(os.path.exists(buffer))
+        rows = repo.facts(subject="git:demo")["facts"]
+        self.assertEqual(len(rows), 1)
+
     def test_session_start_digest_empty_journal(self):
         self.assertIn("journal is empty", self._digest())
 

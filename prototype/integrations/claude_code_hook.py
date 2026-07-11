@@ -5,8 +5,11 @@ Three hook events, one script:
 
 - SessionStart: prints a compact belief digest (via `dump`) into the new
   session's context — the agent re-anchors without being asked to.
-- PostToolUse: records the tool call as a staged `tool_observation` fact.
-- Stop: commits the staged facts as one thought per assistant turn.
+- PostToolUse: appends captured events to a per-session BUFFER file —
+  never the shared index (COG-062: parallel sessions must not trip each
+  other's dirty-index refusals or absorb each other's captures).
+- Stop: publishes the buffered events as ONE atomic thought via the
+  batch micro-commit; on failure the buffer survives for the next turn.
 
 Wiring (~/.claude/settings.json or project .claude/settings.json):
 
@@ -31,12 +34,14 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit.errors import CogitError  # noqa: E402
 from cogit.repo import Repository, init_repository  # noqa: E402
+from cogit.secrets import reject_suspected_secrets  # noqa: E402
 
 
 def now_utc():
@@ -119,47 +124,61 @@ def detect_events(payload):
     return events
 
 
-def stage_belief(repo, slug, event, hook_actor_value="claude-code"):
-    """Stage one event belief; supersede the previous value of the same
-    claim family (same subject/predicate/qualifiers) — current-state
-    semantics per claim-modeling Rule 5."""
-    qualifiers = {**event["qualifiers"], "project": slug}
-    if repo.status()["thought"] is None:
-        rows = []  # empty journal: nothing to supersede yet
-    else:
-        rows = repo.facts(subject=event["subject"], predicate=event["predicate"],
-                          project=slug)["facts"]
-    family = [row for row in rows if row["qualifiers"] == qualifiers]
-    if any(row["object"] == event["object"] for row in family):
-        return False  # already the active belief
-    for row in family:
-        repo.remove_fact(row["assertion"], "superseded")
-    repo.add_fact({
+# -- per-session capture buffer (COG-062): the hook never touches the index ------
+
+def buffer_path(repo, payload):
+    session = re.sub(r"[^A-Za-z0-9._-]", "-", str(payload.get("session_id") or ""))
+    base = os.path.join(repo.cogit_dir, "hook-buffers")
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, f"{session[:32] or 'no-session'}.jsonl")
+
+
+def buffer_append(repo, payload, entry):
+    with open(buffer_path(repo, payload), "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def sweep_stale_buffers(repo, max_age_days=7):
+    """Dead sessions leave buffers behind; sweep them on session-start."""
+    base = os.path.join(repo.cogit_dir, "hook-buffers")
+    if not os.path.isdir(base):
+        return
+    cutoff = time.time() - max_age_days * 86400
+    for name in os.listdir(base):
+        path = os.path.join(base, name)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.unlink(path)
+        except OSError:
+            continue
+
+
+def event_doc(event, slug, actor, asserted_at):
+    return {
         "claim": {
             "type": "claim",
             "kind": "tool_observation",
             "subject": event["subject"],
             "predicate": event["predicate"],
             "object": event["object"],
-            "qualifiers": qualifiers,
+            "qualifiers": {**event["qualifiers"], "project": slug},
         },
         "assertion": {
             "type": "assertion",
             "status": "asserted",
             "source": {"type": "tool", "uri": event["uri"]},
             "confidence_bps": 9900,
-            "asserted_at": now_utc(),
-            "actor": hook_actor_value,
+            "asserted_at": asserted_at,
+            "actor": actor,
             "method": {"type": "event_capture"},
         },
-    })
-    return True
+    }
 
 
-def capture_everything(repo, payload):
+def firehose_doc(payload):
     """COG-012 firehose mode (COGIT_CAPTURE=all): every tool call."""
     tool = payload.get("tool_name", "unknown-tool")
-    repo.add_fact({
+    return {
         "claim": {
             "type": "claim",
             "kind": "tool_observation",
@@ -178,35 +197,89 @@ def capture_everything(repo, payload):
             "actor": hook_actor(payload),
             "method": {"type": "tool_result_capture"},
         },
-    })
+    }
 
 
 def on_post_tool_use(payload):
     repo = journal_repo(payload)
     if os.environ.get("COGIT_CAPTURE", "selective") == "all":
-        capture_everything(repo, payload)
+        buffer_append(repo, payload, {"kind": "doc", "doc": firehose_doc(payload)})
         return
     slug = project_slug(payload)
     for event in detect_events(payload):
-        stage_belief(repo, slug, event, hook_actor_value=hook_actor(payload))
+        buffer_append(repo, payload, {
+            "kind": "event", "event": event, "slug": slug,
+            "actor": hook_actor(payload), "at": now_utc(),
+        })
+
+
+def _family_rows(repo, event, slug):
+    """Active assertions of the event's exact claim family."""
+    if repo.status()["thought"] is None:
+        return []
+    qualifiers = {**event["qualifiers"], "project": slug}
+    rows = repo.facts(subject=event["subject"], predicate=event["predicate"],
+                      project=slug)["facts"]
+    return [row for row in rows if row["qualifiers"] == qualifiers]
 
 
 def on_stop(payload):
     repo = journal_repo(payload)
-    status = repo.status()
-    if not status["staged"] and not status["removed"]:
+    path = buffer_path(repo, payload)
+    if not os.path.isfile(path):
         return
-    repo.commit_thought(
-        f"Turn checkpoint: {len(status['staged'])} captured belief(s)",
-        hook_actor(payload),
-        now_utc(),
+    entries = []
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                continue
+    docs, removals, seen_families = [], {}, {}
+    for entry in entries:
+        if entry.get("kind") == "doc":
+            docs.append(entry["doc"])
+            continue
+        event, slug = entry.get("event") or {}, entry.get("slug", "default")
+        family = (event.get("subject"), event.get("predicate"),
+                  json.dumps({**event.get("qualifiers", {}), "project": slug},
+                             sort_keys=True))
+        seen_families[family] = entry  # last observation of a family wins
+    for entry in seen_families.values():
+        event, slug = entry["event"], entry["slug"]
+        rows = _family_rows(repo, event, slug)
+        if any(row["object"] == event["object"] for row in rows):
+            continue  # already the active belief
+        for row in rows:  # current-state semantics (Rule 5)
+            removals[row["assertion"]] = {"id": row["assertion"], "reason": "superseded"}
+        docs.append(event_doc(event, slug, entry.get("actor", "claude-code"),
+                              entry.get("at") or now_utc()))
+    clean_docs = []
+    for doc in docs:
+        try:
+            reject_suspected_secrets(doc, "hook-capture")
+            clean_docs.append(doc)
+        except CogitError:
+            continue  # a poisoned capture must not block the whole buffer
+    if not clean_docs and not removals:
+        os.unlink(path)
+        return
+    repo.micro_commit_batch(
+        clean_docs, list(removals.values()),
+        f"Turn checkpoint: {len(clean_docs)} captured belief(s)",
+        author=hook_actor(payload),
     )
+    # published (or already active): the buffer is consumed. On CogitError
+    # (dirty index, contradiction) main() swallows and the buffer SURVIVES
+    # for the next turn — captures are never lost to a transient refusal.
+    os.unlink(path)
 
 
 def on_session_start(payload):
     """Print a compact re-anchor digest; SessionStart stdout lands in the
     new session's context (COG-043 — coverage starts with cheap resume)."""
     repo = journal_repo(payload)
+    sweep_stale_buffers(repo)
     project = os.environ.get("COGIT_PROJECT")
     doc = repo.dump(project=project, log_limit=8)
     recap = doc["recap"]
