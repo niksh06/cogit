@@ -37,7 +37,19 @@ def _require(obj, field, message=None):
     return obj[field]
 
 
+_MODE = __import__("threading").local()  # per-thread read/write validation mode
+
+
+def _tolerant() -> bool:
+    return getattr(_MODE, "tolerant", False)
+
+
 def _check_keys(obj, allowed, optional=(), where="object"):
+    if _tolerant():
+        # ADR-0015: read mode tolerates unknown fields on known types —
+        # an object written by a NEWER cogit is version skew, not corruption
+        # (hash and known-field checks still apply; verify reports the skew)
+        return
     unknown = set(obj) - set(allowed) - set(optional)
     if unknown:
         raise UserError(f"{where}: unknown fields rejected: {sorted(unknown)}")
@@ -226,14 +238,25 @@ _VALIDATORS = {
 }
 
 
-def validate_object(obj) -> str:
-    """Validate an object against its schema; return the object type."""
+def validate_object(obj, mode="write") -> str:
+    """Validate an object against its schema; return the object type.
+
+    mode="write" (default) is STRICT: unknown fields are rejected — we only
+    ever write what we understand. mode="read" is tolerant of unknown fields
+    on known types (ADR-0015): additive format extensions must not turn
+    older readers' view of newer objects into CorruptionError; integrity is
+    still guaranteed by the hash and the known-field checks.
+    """
     if not isinstance(obj, dict):
         raise UserError("object: must be a JSON object")
     obj_type = obj.get("type")
     if obj_type not in OBJECT_TYPES:
         raise UserError(f"object: type must be one of {OBJECT_TYPES}")
-    _VALIDATORS[obj_type](obj)
+    _MODE.tolerant = mode == "read"
+    try:
+        _VALIDATORS[obj_type](obj)
+    finally:
+        _MODE.tolerant = False
     return obj_type
 
 

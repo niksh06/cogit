@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::canonical::{canonical_json, parse_json};
 use crate::error::{CoreError, Result};
-use crate::objects::{encode_object, is_oid, validate_object, OBJECT_TYPES};
+use crate::objects::{encode_object, is_oid, validate_object_read, OBJECT_TYPES};
 
 pub struct ObjectStore {
     objects_dir: PathBuf,
@@ -169,7 +169,7 @@ impl ObjectStore {
             .map_err(|_| CoreError::Corruption(format!("object store: {oid} invalid JSON body")))?;
         let value = parse_json(body_text)
             .map_err(|e| CoreError::Corruption(format!("object store: {oid} invalid JSON body: {e}")))?;
-        let obj_type = validate_object(&value)
+        let obj_type = validate_object_read(&value)
             .map_err(|e| CoreError::Corruption(format!("object store: {oid} schema invalid: {e}")))?;
         if canonical_json(&value)?.as_bytes() != body {
             return Err(CoreError::Corruption(format!(

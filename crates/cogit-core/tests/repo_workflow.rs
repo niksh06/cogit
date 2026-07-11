@@ -376,3 +376,46 @@ fn lifecycle_supersede_refute_retire_atomic() {
     assert!(matches!(blocked, Err(CoreError::User(ref m)) if m.contains("not active")
         || m.contains("non-empty index")));
 }
+
+#[test]
+fn tolerant_reader_loads_future_objects() {
+    use cogit_core::canonical::canonical_json;
+    use cogit_core::objects::{validate_object, validate_object_read};
+    use cogit_core::verify::verify_repository;
+    use sha2::{Digest, Sha256};
+    use std::io::Write as _;
+
+    let (dir, repo) = make_repo();
+    repo.micro_commit(&fact_doc("known", 9000), None, None, Some(&ts(0))).unwrap();
+    let head = repo.status().unwrap()["thought"].as_str().unwrap().to_owned();
+    let mindset = repo.log(None).unwrap()[0]["mindset"].as_str().unwrap().to_owned();
+    let future = json!({
+        "type": "thought",
+        "parents": [head],
+        "mindset": mindset,
+        "operation": "commit",
+        "message": "from the future",
+        "author": "future-agent",
+        "timestamp": ts(1),
+        "hypothetical_field_from_v2": {"weight": 3},
+    });
+    // plant it the way a NEWER cogit would: valid hash, canonical bytes
+    let body = canonical_json(&future).unwrap();
+    let preimage = [format!("thought {}", body.len()).as_bytes(), b"\x00", body.as_bytes()].concat();
+    let oid_hex = format!("{:x}", Sha256::digest(&preimage));
+    let fanout = dir.path().join(".cogit/objects").join(&oid_hex[..2]);
+    std::fs::create_dir_all(&fanout).unwrap();
+    let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(&preimage).unwrap();
+    std::fs::write(fanout.join(&oid_hex[2..]), enc.finish().unwrap()).unwrap();
+
+    // read tolerates; strict validation (write path) rejects; verify warns
+    let loaded = repo.store.read(&format!("sha256:{oid_hex}")).unwrap();
+    assert_eq!(loaded["hypothetical_field_from_v2"]["weight"], json!(3));
+    assert!(validate_object(&future).is_err());
+    assert!(validate_object_read(&future).is_ok());
+    let findings = verify_repository(&repo);
+    assert!(findings.iter().any(|f| f["code"] == "unknown-fields"
+        && f["severity"] == "warning"));
+    assert!(!findings.iter().any(|f| f["severity"] == "error"));
+}

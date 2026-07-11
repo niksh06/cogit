@@ -126,7 +126,9 @@ class ObjectStore:
         except (UnicodeDecodeError, ValueError) as exc:
             raise CorruptionError(f"object store: {oid} invalid JSON body") from exc
         try:
-            validate_object(obj)
+            # ADR-0015: reads tolerate unknown fields (forward compatibility);
+            # writes stay strict — see ObjectStore.write
+            validate_object(obj, mode="read")
         except UserError as exc:
             raise CorruptionError(f"object store: {oid} schema invalid: {exc}") from exc
         if canonical_json(obj).encode("utf-8") != body:

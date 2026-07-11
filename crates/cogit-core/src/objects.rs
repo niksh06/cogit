@@ -65,7 +65,15 @@ fn is_ref_segment(value: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'_' || b == b'-')
 }
 
+thread_local! {
+    // ADR-0015: read-mode toleration of unknown fields (version skew, not corruption)
+    static TOLERANT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 fn check_keys(map: &Map<String, Value>, allowed: &[&str], optional: &[&str], where_: &str) -> Result<()> {
+    if TOLERANT.with(std::cell::Cell::get) {
+        return Ok(());
+    }
     for key in map.keys() {
         if !allowed.contains(&key.as_str()) && !optional.contains(&key.as_str()) {
             return user_err(format!("{where_}: unknown fields rejected: {key}"));
@@ -302,6 +310,16 @@ fn validate_annotation(map: &Map<String, Value>) -> Result<()> {
 
 /// Validate an object against its schema; return the object type.
 pub fn validate_object(value: &Value) -> Result<&str> {
+    validate_object_mode(value, false)
+}
+
+/// ADR-0015: reads tolerate unknown fields on known types — an object written
+/// by a NEWER cogit is version skew, not corruption. Writes stay strict.
+pub fn validate_object_read(value: &Value) -> Result<&str> {
+    validate_object_mode(value, true)
+}
+
+fn validate_object_mode(value: &Value, tolerant: bool) -> Result<&str> {
     let map = match value.as_object() {
         Some(map) => map,
         None => return user_err("object: must be a JSON object"),
@@ -310,6 +328,14 @@ pub fn validate_object(value: &Value) -> Result<&str> {
         Some(t) if OBJECT_TYPES.contains(&t) => t,
         _ => return user_err(format!("object: type must be one of {OBJECT_TYPES:?}")),
     };
+    TOLERANT.with(|flag| flag.set(tolerant));
+    let outcome = validate_typed(obj_type, map);
+    TOLERANT.with(|flag| flag.set(false));
+    outcome?;
+    Ok(obj_type)
+}
+
+fn validate_typed(obj_type: &str, map: &Map<String, Value>) -> Result<()> {
     match obj_type {
         "claim" => validate_claim(map)?,
         "assertion" => validate_assertion(map)?,
@@ -319,7 +345,7 @@ pub fn validate_object(value: &Value) -> Result<&str> {
         "annotation" => validate_annotation(map)?,
         _ => unreachable!(),
     }
-    Ok(obj_type)
+    Ok(())
 }
 
 /// (object_id, preimage bytes) for a validated object.

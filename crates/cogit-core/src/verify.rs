@@ -138,6 +138,18 @@ pub fn verify_repository(repo: &Repository) -> Vec<Value> {
         }
     }
 
+    // -- forward-compat skew: unknown fields visible, not fatal (ADR-0015) --------------
+    for (oid, obj) in &objects {
+        if crate::objects::validate_object(obj).is_err() {
+            finding(
+                &mut link_findings,
+                "warning",
+                "unknown-fields",
+                format!("{oid} carries fields this cogit does not know — written by a newer version? readers tolerate it; consider upgrading"),
+            );
+        }
+    }
+
     // -- removal provenance consistency (ADR-0014) --------------------------------------
     let mindset_of = |thought_oid: &str| -> BTreeSet<String> {
         objects

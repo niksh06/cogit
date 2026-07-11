@@ -14,7 +14,7 @@ These invariants are the safety rails for Cogit implementation. If a feature vio
 2. Same canonical object bytes always produce the same object ID.
 3. Object ID is derived only from `<type> <size>\0<canonical-json>`.
 4. Same semantic text is not automatically the same fact.
-5. Object reads verify hash and schema before returning data.
+5. Object reads verify hash and the KNOWN-field schema before returning data; unknown fields on known types are tolerated (forward compatibility, ADR-0015) and surfaced by `verify` as a warning. Writes remain fully strict.
 6. Object writes reject malformed data.
 7. Same object path with different bytes is corruption.
 8. Refs are mutable pointers, not committed history.

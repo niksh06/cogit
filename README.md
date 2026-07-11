@@ -149,7 +149,8 @@ sh tools/interop-test.sh                                # Python <-> Rust on one
 ## Design guarantees
 
 - Immutable objects never change after publication; reads verify hash and
-  schema (`docs/spec/object-format-v1.md`).
+  the known-field schema — unknown fields from a newer version are
+  tolerated, never fatal (`docs/spec/object-format-v1.md`, ADR-0015).
 - Ref updates are atomic, use old-value checks, and every `HEAD`/branch
   movement appends a reflog entry (`docs/adr/0004-integrity-and-ref-atomicity.md`).
 - `blame-fact` means *first introducer* in selected ancestry, not last

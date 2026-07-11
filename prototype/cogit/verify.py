@@ -83,6 +83,17 @@ def verify_repository(repo):
             for parent in obj["parents"]:
                 check_link(oid, parent, "annotation", "missing-annotation-parent")
 
+    # -- forward-compat skew: unknown fields are visible, not fatal (ADR-0015) -----
+    from .objects import validate_object
+
+    for oid, obj in sorted(objects.items()):
+        try:
+            validate_object(obj, mode="write")
+        except CogitError as exc:
+            _finding(findings, "warning", "unknown-fields",
+                     f"{oid} carries fields this cogit does not know ({exc}) — "
+                     "written by a newer version? readers tolerate it; consider upgrading")
+
     # -- removal provenance consistency (ADR-0014) ---------------------------------
     def mindset_of(thought_oid):
         thought = objects.get(thought_oid)
