@@ -201,12 +201,17 @@ class Repository:
             raise UserError(f"{oid} is a {obj['type']}, expected {expected}")
         return obj
 
-    def _mindset_assertions(self, thought_oid) -> set:
+    def mindset_assertions(self, thought_oid) -> set:
+        """Assertion-id set of a thought's mindset (public: readers need sets
+        without decoding rows — COG-061; name matches the Rust port)."""
         if thought_oid is None:
             return set()
         thought = self._read_typed(thought_oid, "thought")
         mindset = self._read_typed(thought["mindset"], "mindset")
         return set(mindset["assertions"])
+
+    # back-compat alias for the private spelling
+    _mindset_assertions = mindset_assertions
 
     # -- staging ------------------------------------------------------------------
 
@@ -1185,7 +1190,7 @@ class Repository:
 
     # -- facts / show (COG-028) --------------------------------------------------------
 
-    def _fact_row(self, aid: str) -> dict:
+    def fact_row(self, aid: str) -> dict:
         assertion = self._read_typed(aid, "assertion")
         claim = self._read_typed(assertion["claim"], "claim")
         return {
@@ -1207,6 +1212,9 @@ class Repository:
             "premises": assertion.get("premises", []),
             "status": assertion["status"],
         }
+
+    # back-compat alias for the private spelling
+    _fact_row = fact_row
 
     @staticmethod
     def _row_matches(row, subject=None, predicate=None, project=None) -> bool:

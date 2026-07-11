@@ -72,6 +72,28 @@ def _topo_oldest_first(thoughts: dict) -> list:
     return emitted
 
 
+# COG-061: immutable-object caches. Content addressing makes these trivially
+# correct — an oid's decoded value can never change — so incremental rebuilds
+# after the first one only pay for NEW objects. Keyed per repo path so one
+# server process can serve snapshots of different journals safely.
+_ROW_CACHE = {}
+_MINDSET_CACHE = {}
+
+
+def _cached_row(repo, aid):
+    cache = _ROW_CACHE.setdefault(repo.cogit_dir, {})
+    if aid not in cache:
+        cache[aid] = repo.fact_row(aid)
+    return cache[aid]
+
+
+def _cached_mindset(repo, oid):
+    cache = _MINDSET_CACHE.setdefault(repo.cogit_dir, {})
+    if oid not in cache:
+        cache[oid] = repo.mindset_assertions(oid)
+    return cache[oid]
+
+
 def build_state(repo: Repository) -> dict:
     """Decode the whole journal into one JSON-ready snapshot."""
     status = repo.status()
@@ -88,14 +110,15 @@ def build_state(repo: Repository) -> dict:
             thoughts.setdefault(entry["id"], entry)
     order = _topo_oldest_first(thoughts)
 
-    # Active assertion sets and decoded rows per thought (public facts()).
-    active = {}
+    # COG-061: id-sets per thought, each row decoded ONCE across the build.
+    # The old per-thought facts() decoded every active row for every thought —
+    # O(N thoughts x M assertions) object reads; measured 145s at a 10x journal.
+    active = {oid: _cached_mindset(repo, oid) for oid in order}
     rows = {}
     for oid in order:
-        fact_rows = repo.facts(oid)["facts"]
-        active[oid] = {row["assertion"] for row in fact_rows}
-        for row in fact_rows:
-            rows.setdefault(row["assertion"], row)
+        for aid in active[oid]:
+            if aid not in rows:
+                rows[aid] = _cached_row(repo, aid)
 
     # First introducer per assertion == blame-fact semantics: oldest thought
     # whose mindset holds the fact while no parent mindset does.
