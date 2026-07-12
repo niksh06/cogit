@@ -10,6 +10,18 @@ The version names the SOFTWARE. The repository FORMAT is versioned
 separately (`repositoryFormatVersion` in `.cogit/config`, currently 1)
 and only changes through an ADR plus regenerated test vectors.
 
+## [0.3.0] — 2026-07-12
+
+### Added
+- Writer provenance (ADR-0016, COG-071): every new thought records which
+  build wrote it — an optional `writer` field, `<impl>/<semver>` (e.g.
+  `cogit-py/0.3.0`). Thoughts only: claims/assertions are
+  identity-deduplicated and never carry the version. Golden vector #9
+  freezes the field; the entire pre-0.3.0 history (no `writer`) stays
+  valid. `log --json`/`dump` expose it; `health()` reports
+  `newest_writer` and warns (`version_skew`) when the journal holds
+  thoughts written by a newer cogit than the reader.
+
 ## [0.2.0] — 2026-07-12
 
 The field-hardening release: everything learned from running the shared

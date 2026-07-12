@@ -24,8 +24,9 @@ fn all_types_present() {
     assert_eq!(
         types,
         // trailing additions: premises assertion (ADR-0013), removals thought
-        // (ADR-0014) — the frozen earlier vectors never change
-        ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion", "thought"]
+        // (ADR-0014), writer thought (ADR-0016) — the frozen earlier vectors
+        // never change
+        ["claim", "assertion", "mindset", "thought", "anchor", "annotation", "assertion", "thought", "thought"]
     );
 }
 

@@ -207,6 +207,14 @@ RSS=$($RUST search "derived" --history --json | $PYBIN -c 'import json,sys; d=js
 [ "$PYS" != '[0, []]' ] || fail "search found nothing for a known token"
 ok
 
+step "writer provenance crosses runtimes (ADR-0016)"
+PYW=$($RUST cat-object "$T1" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin).get("writer",""))')
+[ "$PYW" = "cogit-py/$CHV" ] || fail "python-written thought carries writer '$PYW'"
+RST=$($RUST status --json | $PYBIN -c 'import json,sys; print(json.load(sys.stdin)["thought"])')
+RSW=$($PY cat-object "$RST" | $PYBIN -c 'import json,sys; print(json.load(sys.stdin).get("writer",""))')
+[ "$RSW" = "cogit-rs/$CHV" ] || fail "rust-written thought carries writer '$RSW'"
+ok
+
 step "dump agrees across runtimes (COG-042; rows carry asserted_at+method, COG-059)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')

@@ -140,6 +140,24 @@
       "canonical_json": "{\"author\":\"agent\",\"message\":\"Superseded the stale preference with the confirmed one.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\"],\"removals\":[{\"assertion\":\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\",\"reason\":\"superseded\"}],\"timestamp\":\"2026-07-10T12:00:00Z\",\"type\":\"thought\"}",
       "preimage": "thought 452\u0000{\"author\":\"agent\",\"message\":\"Superseded the stale preference with the confirmed one.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cde1a31d78cbf98f549cc2cab8c65f071f48ab09934d692c498f06a24375f316\"],\"removals\":[{\"assertion\":\"sha256:8781107750aecc755dde4d48bb00ce890e4a56346af9dfdf61dbb3dad2592abf\",\"reason\":\"superseded\"}],\"timestamp\":\"2026-07-10T12:00:00Z\",\"type\":\"thought\"}",
       "object_id": "sha256:cd009be0d66fbd6f5f179702ee49214ba6988cb6dc8acc5f834ddaecc8a29851"
+    },
+    {
+      "type": "thought",
+      "object": {
+        "type": "thought",
+        "parents": [
+          "sha256:cd009be0d66fbd6f5f179702ee49214ba6988cb6dc8acc5f834ddaecc8a29851"
+        ],
+        "mindset": "sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8",
+        "operation": "commit",
+        "message": "Recorded with writer provenance.",
+        "author": "agent",
+        "timestamp": "2026-07-12T12:00:00Z",
+        "writer": "cogit-py/0.3.0"
+      },
+      "canonical_json": "{\"author\":\"agent\",\"message\":\"Recorded with writer provenance.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cd009be0d66fbd6f5f179702ee49214ba6988cb6dc8acc5f834ddaecc8a29851\"],\"timestamp\":\"2026-07-12T12:00:00Z\",\"type\":\"thought\",\"writer\":\"cogit-py/0.3.0\"}",
+      "preimage": "thought 332\u0000{\"author\":\"agent\",\"message\":\"Recorded with writer provenance.\",\"mindset\":\"sha256:be271d3e088b6c2ffedfcf3945861d45a7feb8a533a2d55ac5cd66d429aea6c8\",\"operation\":\"commit\",\"parents\":[\"sha256:cd009be0d66fbd6f5f179702ee49214ba6988cb6dc8acc5f834ddaecc8a29851\"],\"timestamp\":\"2026-07-12T12:00:00Z\",\"type\":\"thought\",\"writer\":\"cogit-py/0.3.0\"}",
+      "object_id": "sha256:39cb733ac691fa14c9169aba8b5e9ae1cbe42452b2434c691ffc004c4b622c47"
     }
   ]
 }

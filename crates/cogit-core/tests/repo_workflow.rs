@@ -449,3 +449,36 @@ fn search_greps_beliefs_across_fields() {
     // empty pattern is a clean error
     assert!(repo.search("  ", None, None, false, 50).is_err());
 }
+
+#[test]
+fn thoughts_carry_writer_provenance() {
+    // ADR-0016: every runtime stamps the thoughts it writes
+    let (_dir, repo) = make_repo();
+    repo.micro_commit(&fact_doc("stamped", 9000), None, None, Some(&ts(1))).unwrap();
+    let log = repo.log(None).unwrap();
+    assert_eq!(log[0]["writer"].as_str(), Some(cogit_core::repo::WRITER));
+    assert_eq!(
+        cogit_core::repo::WRITER,
+        concat!("cogit-rs/", env!("CARGO_PKG_VERSION"))
+    );
+
+    // malformed writers are rejected on write; absent writer stays valid
+    let oid = format!("sha256:{}", "0".repeat(64));
+    let mut thought = json!({
+        "type": "thought", "parents": [], "mindset": oid,
+        "operation": "commit", "message": "m", "author": "a",
+        "timestamp": "2026-07-12T12:00:00Z",
+    });
+    cogit_core::objects::validate_object(&thought).unwrap();
+    for bad in ["", "no-slash", "two/sl/ash", "has space/1.0.0", "/0.3.0", "cogit-py/"] {
+        thought["writer"] = json!(bad);
+        assert!(
+            cogit_core::objects::validate_object(&thought).is_err(),
+            "writer {bad:?} accepted"
+        );
+    }
+    thought["writer"] = json!(format!("a/{}", "9".repeat(70)));
+    assert!(cogit_core::objects::validate_object(&thought).is_err());
+    thought["writer"] = json!("cogit-py/0.3.0+abc123"); // build suffix stays legal
+    cogit_core::objects::validate_object(&thought).unwrap();
+}

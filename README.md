@@ -146,7 +146,7 @@ container (`docker compose up -d`).
 Run the test suites:
 
 ```sh
-cd prototype && python3 -m unittest discover -s tests   # 219 tests
+cd prototype && python3 -m unittest discover -s tests   # 243 tests
 cargo test                                              # core + golden vectors
 sh tools/interop-test.sh                                # Python <-> Rust on one repo
 ```
@@ -158,6 +158,9 @@ sh tools/interop-test.sh                                # Python <-> Rust on one
   tolerated, never fatal (`docs/spec/object-format-v1.md`, ADR-0015).
 - Ref updates are atomic, use old-value checks, and every `HEAD`/branch
   movement appends a reflog entry (`docs/adr/0004-integrity-and-ref-atomicity.md`).
+- Thoughts record which build wrote them (`writer`, ADR-0016), and
+  `health` warns when the journal was written by a newer cogit than the
+  reader — version skew is a diagnosis, not a mystery.
 - `blame-fact` means *first introducer* in selected ancestry, not last
   modifier (`docs/adr/0005-first-introducer-blame.md`).
 - Merge is conservative: when unsure, record a conflict, never invent a

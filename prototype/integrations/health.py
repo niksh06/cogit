@@ -31,6 +31,41 @@ from lint import lint as run_lint  # noqa: E402
 
 HYGIENE_RULES = ("R11-family-rivalry", "R12-singleton-state", "R13-advisory-marker")
 
+WRITER_SCAN_LIMIT = 50  # newest thoughts consulted for version-skew detection
+
+
+def _semver_key(version):
+    """Comparable (major, minor, patch) or None for non-semver tokens."""
+    parts = version.split("+", 1)[0].split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError:
+        return None
+
+
+def _writer_report(writers, reader_version):
+    """ADR-0016: pick the newest stamped writer and flag reader skew.
+
+    Returns (newest_writer, skew_message_or_None). Only semver-parseable
+    stamps compete; a journal ahead of this reader is the actionable case
+    (the stale-MCP/stale-container failure mode), older writers are normal.
+    """
+    newest = None
+    newest_key = None
+    for token in writers:
+        key = _semver_key(token.partition("/")[2])
+        if key is not None and (newest_key is None or key > newest_key):
+            newest, newest_key = token, key
+    reader_key = _semver_key(reader_version)
+    if newest_key is not None and reader_key is not None and newest_key > reader_key:
+        skew = (f"journal holds thoughts written by {newest}, this reader is "
+                f"cogit-py/{reader_version} — restart or upgrade stale readers "
+                "(MCP servers, containers)")
+        return newest, skew
+    return newest, None
+
 
 def health(repo, project=None, since=None, top=10):
     project = normalize_project_slug(project) if project else project
@@ -70,6 +105,9 @@ def health(repo, project=None, since=None, top=10):
 
     dump = repo.dump(project=project, log_limit=1, compact=True)
     last_thought = dump["log"][0] if dump["log"] else None
+    recent_writers = [row["writer"] for row in repo.log()[:WRITER_SCAN_LIMIT]
+                      if row.get("writer")] if status["thought"] else []
+    newest_writer, version_skew = _writer_report(recent_writers, __version__)
     anchors = repo.list_anchors()
     newest_anchor = (max(anchors, key=lambda a: (a["created_at"], a["name"]))
                      if anchors else None)
@@ -81,6 +119,8 @@ def health(repo, project=None, since=None, top=10):
         "project": project,
         # COG-070: name the reader build — version skew is invisible otherwise
         "reader": "cogit-py/" + __version__,
+        # ADR-0016: newest stamped writer among recent thoughts (None = pre-0.3.0 history)
+        "newest_writer": newest_writer,
         "projects_in_journal": projects,
         "integrity": integrity,
         "beliefs": {
@@ -104,6 +144,8 @@ def health(repo, project=None, since=None, top=10):
         "newest_anchor": newest_anchor,
         "top_volatile_families": report["volatility"][: max(0, top)],
     }
+    if version_skew:
+        doc["version_skew"] = version_skew
     return doc
 
 

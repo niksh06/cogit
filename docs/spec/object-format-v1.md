@@ -187,6 +187,14 @@ Rules:
   pre-ADR objects stay valid). The field is part of the preimage
   (identity-bearing). `verify` cross-checks entries against the actual
   parent-to-mindset delta.
+- OPTIONAL `writer` (ADR-0016, additive): the build that wrote this
+  thought, a single token `<impl>/<version>` (e.g. `cogit-py/0.3.0`;
+  an optional `+<build>` suffix on the version is reserved). At most 64
+  characters, no whitespace or control characters, exactly one `/`,
+  both halves non-empty. Absent field ≡ pre-0.3.0 writer (the entire
+  earlier history stays valid). Thoughts ONLY: claims and assertions
+  are identity-deduplicated across writers and MUST NOT carry a
+  version, or identical facts would split into different IDs.
 
 ### Anchor
 

@@ -22,9 +22,10 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(
             [v["type"] for v in self.vectors],
             # trailing additions: premises assertion (ADR-0013), removals
-            # thought (ADR-0014) — the frozen earlier vectors never change
+            # thought (ADR-0014), writer thought (ADR-0016) — the frozen
+            # earlier vectors never change
             ["claim", "assertion", "mindset", "thought", "anchor", "annotation",
-             "assertion", "thought"],
+             "assertion", "thought", "thought"],
         )
 
     def test_vectors_reproduce(self):
@@ -42,17 +43,23 @@ class VectorTests(unittest.TestCase):
         for vector in self.vectors:
             by_type.setdefault(vector["type"], vector)  # first occurrence wins
         self.assertEqual(by_type["assertion"]["object"]["claim"], by_type["claim"]["object_id"])
-        premises_vector = self.vectors[-2]
+        premises_vector = self.vectors[6]
         self.assertEqual(premises_vector["object"]["premises"],
                          [by_type["assertion"]["object_id"]])
         self.assertEqual(premises_vector["object"]["claim"], by_type["claim"]["object_id"])
-        removals_vector = self.vectors[-1]
+        removals_vector = self.vectors[7]
         self.assertEqual(removals_vector["object"]["removals"],
                          [{"assertion": by_type["assertion"]["object_id"],
                            "reason": "superseded"}])
         self.assertEqual(removals_vector["object"]["parents"],
                          [by_type["thought"]["object_id"]])
         self.assertEqual(removals_vector["object"]["mindset"],
+                         by_type["mindset"]["object_id"])
+        writer_vector = self.vectors[8]  # ADR-0016
+        self.assertEqual(writer_vector["object"]["writer"], "cogit-py/0.3.0")
+        self.assertEqual(writer_vector["object"]["parents"],
+                         [removals_vector["object_id"]])
+        self.assertEqual(writer_vector["object"]["mindset"],
                          by_type["mindset"]["object_id"])
         self.assertEqual(by_type["mindset"]["object"]["assertions"], [by_type["assertion"]["object_id"]])
         self.assertEqual(by_type["thought"]["object"]["mindset"], by_type["mindset"]["object_id"])

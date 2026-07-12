@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timezone
 
+from . import __version__
 from .errors import (
     ConcurrentUpdateError,
     CorruptionError,
@@ -21,6 +22,10 @@ from .secrets import reject_suspected_secrets
 from .store import ObjectStore
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+# ADR-0016: every thought this build writes names its writer. Thoughts only —
+# claims/assertions are identity-deduplicated and must never carry the version.
+WRITER = "cogit-py/" + __version__
 
 DEFAULT_CONFIG = """[core]
 \trepositoryFormatVersion = 1
@@ -308,6 +313,7 @@ class Repository:
                         "message": message,
                         "author": author,
                         "timestamp": ts,
+                        "writer": WRITER,
                     }
                 )
                 try:
@@ -406,6 +412,7 @@ class Repository:
                     "message": message,
                     "author": author,
                     "timestamp": ts,
+                    "writer": WRITER,
                 }
                 if removals:
                     # ADR-0014: durable removal provenance on the thought itself
@@ -632,6 +639,7 @@ class Repository:
             "message": message,
             "author": author,
             "timestamp": timestamp,
+            "writer": WRITER,
         }
         if index["removed_facts"]:
             # ADR-0014: the removal reasons survive the index — on the thought

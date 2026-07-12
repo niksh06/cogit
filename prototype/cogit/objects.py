@@ -162,7 +162,7 @@ def _validate_thought(obj):
     _check_keys(
         obj,
         ("type", "parents", "mindset", "operation", "message", "author", "timestamp",
-         "removals"),
+         "removals", "writer"),
         where="thought",
     )
     parents = _require(obj, "parents")
@@ -194,6 +194,15 @@ def _validate_thought(obj):
             seen.append(entry["assertion"])
         if seen != sorted(seen) or len(set(seen)) != len(seen):
             raise UserError("thought: removals must be sorted by assertion and unique")
+    if "writer" in obj:
+        # ADR-0016: writer provenance — optional, additive
+        writer = obj["writer"]
+        if not isinstance(writer, str) or not 0 < len(writer) <= 64:
+            raise UserError("thought: writer must be a non-empty string of at most 64 chars")
+        impl_part, sep, version_part = writer.partition("/")
+        if not sep or not impl_part or not version_part or "/" in version_part \
+                or any(ch.isspace() or not ch.isprintable() for ch in writer):
+            raise UserError("thought: writer must be a single '<impl>/<version>' token")
 
 
 def _validate_anchor(obj):

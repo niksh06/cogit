@@ -19,6 +19,10 @@ use crate::time::now_utc;
 const DEFAULT_CONFIG: &str = "[core]\n\trepositoryFormatVersion = 1\n[extensions]\n\tobjectFormat = sha256\n";
 const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// ADR-0016: every thought this build writes names its writer. Thoughts only —
+/// claims/assertions are identity-deduplicated and must never carry the version.
+pub const WRITER: &str = concat!("cogit-rs/", env!("CARGO_PKG_VERSION"));
+
 fn user_err<T>(msg: impl Into<String>) -> Result<T> {
     Err(CoreError::User(msg.into()))
 }
@@ -385,6 +389,7 @@ impl Repository {
                 "message": message,
                 "author": author,
                 "timestamp": ts,
+                "writer": WRITER,
             }))?;
             let publish = match &branch {
                 Some(branch) => self
@@ -528,6 +533,7 @@ impl Repository {
                 "message": message,
                 "author": author,
                 "timestamp": ts,
+                "writer": WRITER,
             });
             if !removals.is_empty() {
                 // ADR-0014: durable removal provenance on the thought itself
@@ -930,6 +936,7 @@ impl Repository {
             "message": message,
             "author": author,
             "timestamp": timestamp,
+            "writer": WRITER,
         });
         let recorded: Vec<Value> = {
             let mut entries: Vec<(String, String)> = index["removed_facts"]

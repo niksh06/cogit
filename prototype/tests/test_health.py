@@ -156,5 +156,33 @@ class CompactModeTests(unittest.TestCase):
         self.assertEqual(report["project"], "only")
 
 
+class VersionSkewTests(unittest.TestCase):
+    """ADR-0016: health names writers and flags a journal ahead of the reader."""
+
+    def setUp(self):
+        self.tmp, self.repo = make_repo()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_reader_and_newest_writer_reported_no_skew(self):
+        from cogit import __version__
+        self.repo.micro_commit(fact_doc("stamped", when=ts(0)), timestamp=ts(0))
+        report = health_mod.health(self.repo)
+        self.assertEqual(report["reader"], f"cogit-py/{__version__}")
+        self.assertEqual(report["newest_writer"], f"cogit-py/{__version__}")
+        self.assertNotIn("version_skew", report)
+
+    def test_writer_report_flags_newer_journal(self):
+        newest, skew = health_mod._writer_report(
+            ["cogit-rs/99.0.0", "cogit-py/0.3.0"], "0.3.0")
+        self.assertEqual(newest, "cogit-rs/99.0.0")
+        self.assertIn("restart or upgrade", skew)
+        # unparseable stamps and older writers stay quiet
+        newest, skew = health_mod._writer_report(
+            ["cogit-py/0.1.0", "weird/token"], "0.3.0")
+        self.assertEqual(newest, "cogit-py/0.1.0")
+        self.assertIsNone(skew)
+        self.assertEqual(health_mod._writer_report([], "0.3.0"), (None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

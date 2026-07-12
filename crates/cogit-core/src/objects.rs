@@ -229,7 +229,7 @@ fn validate_thought(map: &Map<String, Value>) -> Result<()> {
     check_keys(
         map,
         &["type", "parents", "mindset", "operation", "message", "author", "timestamp"],
-        &["removals"],
+        &["removals", "writer"],
         "thought",
     )?;
     get_oid_list(map, "parents", false, "thought")?; // semantic order (CQ-006)
@@ -272,6 +272,22 @@ fn validate_thought(map: &Map<String, Value>) -> Result<()> {
         sorted.dedup();
         if seen != sorted {
             return user_err("thought: removals must be sorted by assertion and unique");
+        }
+    }
+    if let Some(writer) = map.get("writer") {
+        // ADR-0016: writer provenance — optional, additive
+        let token = writer.as_str().unwrap_or("");
+        if token.is_empty() || token.len() > 64 {
+            return user_err("thought: writer must be a non-empty string of at most 64 chars");
+        }
+        let parts: Vec<&str> = token.splitn(2, '/').collect();
+        let well_formed = parts.len() == 2
+            && !parts[0].is_empty()
+            && !parts[1].is_empty()
+            && !parts[1].contains('/')
+            && token.chars().all(|c| !c.is_whitespace() && !c.is_control());
+        if !well_formed {
+            return user_err("thought: writer must be a single '<impl>/<version>' token");
         }
     }
     Ok(())
