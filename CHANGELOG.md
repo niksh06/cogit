@@ -10,6 +10,16 @@ The version names the SOFTWARE. The repository FORMAT is versioned
 separately (`repositoryFormatVersion` in `.cogit/config`, currently 1)
 and only changes through an ADR plus regenerated test vectors.
 
+## [0.4.1] — 2026-07-12
+
+### Fixed
+- Hook: git-commit captures keep the belief object a value (lint R2).
+  JSON-encoded tool responses hide stat lines behind a literal `\n`
+  that `splitlines()` cannot split, so `head_commit` objects leaked
+  `… 11 files changed, …` tails; the subject is now cut at the escaped
+  newline and capped at 10 words / 100 chars — the full message lives
+  in git itself.
+
 ## [0.4.0] — 2026-07-12
 
 ### Added

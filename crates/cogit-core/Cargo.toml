@@ -1,6 +1,6 @@
 [package]
 name = "cogit-core"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "Cogit core: canonical JSON, content-addressed object store (ADR-0007/0010)"
 license = "Apache-2.0"

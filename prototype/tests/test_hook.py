@@ -83,6 +83,33 @@ class HookTests(unittest.TestCase):
         # COG-052: the writer is attributable down to the session
         self.assertEqual(rows[0]["actor"], "claude-code-sess42xy")
 
+    def test_commit_capture_object_stays_a_value(self):
+        # JSON-encoded responses hide stat lines behind a LITERAL backslash-n,
+        # and long commit titles are prose — the object must stay lint-clean
+        os.environ["COGIT_PROJECT"] = "demo"
+        self.addCleanup(os.environ.pop, "COGIT_PROJECT", None)
+        title = ("COG-072: the journal reads like git — project swimlanes "
+                 "plus anchor chapters and more words beyond any cap")
+        payload = {
+            "cwd": self.tmp.name,
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m '...'"},
+            "tool_response": "[main adeaab3fff] " + title +
+                             "\\n 11 files changed, 337 insertions(+)",
+            "session_id": "sess-shape",
+        }
+        hook.on_post_tool_use(payload)
+        hook.on_stop(payload)
+        repo = Repository.open(self.tmp.name)
+        rows = repo.facts(subject="git:demo")["facts"]
+        self.assertEqual(len(rows), 1)
+        obj = rows[0]["object"]
+        self.assertNotIn("\\n", obj)
+        self.assertNotIn("files changed", obj)
+        self.assertLessEqual(len(obj), 100)
+        self.assertLessEqual(len(obj.split()), 12)
+        self.assertTrue(obj.startswith("adeaab3fff: COG-072:"))
+
     def test_selective_captures_suite_status_transitions(self):
         os.environ["COGIT_PROJECT"] = "demo"
         self.addCleanup(os.environ.pop, "COGIT_PROJECT", None)

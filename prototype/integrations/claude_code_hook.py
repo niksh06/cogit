@@ -104,10 +104,18 @@ def detect_events(payload):
                       if (m := COMMIT_RE.search(line))), None)
         if match:
             branch, commit, subject = match.groups()
+            # tool_response often arrives JSON-encoded, so stat lines hide
+            # behind a LITERAL backslash-n that splitlines() cannot split —
+            # cut them off, then keep the object a value (lint R2: <=12
+            # words / <=100 chars); the full message lives in git itself
+            subject = subject.split("\\n")[0].strip()
+            words = subject.split()
+            if len(words) > 10:
+                subject = " ".join(words[:10]) + "…"
             events.append({
                 "subject": "git:{}".format(project_slug(payload)),
                 "predicate": "head_commit",
-                "object": f"{commit[:10]}: {subject[:120]}",
+                "object": f"{commit[:10]}: {subject}"[:100],
                 "qualifiers": {"branch": branch},
                 "uri": f"git-commit:{branch}",
             })
