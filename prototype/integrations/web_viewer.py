@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from cogit import __version__  # noqa: E402
 from cogit.errors import CogitError, CorruptionError  # noqa: E402
-from cogit.repo import Repository, now_utc  # noqa: E402
+from cogit.repo import Repository, normalize_project_slug, now_utc  # noqa: E402
 
 from health import health  # noqa: E402  (script-dir import, like analytics)
 
@@ -151,7 +151,9 @@ def build_state(repo: Repository) -> dict:
         for aid in list(added) + list(removed):
             value = (rows[aid].get("qualifiers") or {}).get("project")
             if value:
-                projects.add(str(value))
+                # COG-063 read-side parity: historical thoughts reference
+                # pre-migration rows — one project must mean one lane
+                projects.add(normalize_project_slug(str(value)))
         nodes.append(
             {
                 "id": oid,
@@ -375,6 +377,13 @@ main { display:grid; grid-template-columns:minmax(360px,1fr) minmax(420px,1.4fr)
   display:inline-flex; align-items:center; justify-content:center;
   font-size:8.5px; font-weight:700; color:#fff; letter-spacing:.2px; }
 #actors { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+#lanes { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.seg { display:flex; gap:8px; align-items:center; cursor:pointer; padding:0 8px;
+  color:var(--muted); user-select:none; }
+.seg:hover { color:var(--fg); }
+.seg .chev { width:12px; flex:none; font-size:10px; }
+.seg .segline { flex:1; border-top:1px solid var(--border); min-width:24px; }
+.seg .count { font-size:11px; white-space:nowrap; }
 .actorchip { display:inline-flex; gap:6px; align-items:center; cursor:pointer;
   border:1px solid var(--border); border-radius:999px; padding:2px 8px 2px 3px;
   font-size:12px; transition:border-color .15s ease, background .15s ease; }
@@ -449,8 +458,14 @@ tr.expand td { border-top:none; padding-top:0; }
 </header>
 <main>
   <section class="card">
-    <h2>Thoughts</h2>
+    <div class="cardhead"><h2>Thoughts</h2>
+      <select id="f-view" title="graph layout: branch lanes (the DAG) or project swimlanes (threads of work)">
+        <option value="">view: auto</option>
+        <option value="branches">view: branches</option>
+        <option value="projects">view: projects</option>
+      </select></div>
     <div id="actors"></div>
+    <div id="lanes"></div>
     <div id="graph"></div>
   </section>
   <div class="col">
@@ -500,7 +515,7 @@ const distinct = a => [...new Set(a)];
 
 let STATE = null, ETAG = null, SEL = null, URL_FILTERS_APPLIED = false;
 let ACTOR_SEL = null, LIVE_MODE = true, DOTS = {}, TOAST_TIMER = null;
-let HEALTH = null;
+let HEALTH = null, EXPANDED_SEGS = null;
 const EXPANDED = new Set();
 
 // Lane palette: one stable color per graph column, git-graph style.
@@ -706,7 +721,10 @@ function renderRecap() {
   r.thoughts.slice(-6).reverse().forEach(t => {
     const d = el('div', 'recap-row');
     d.append(el('span', 'mono muted', short(t.id)), el('span', null, t.message));
-    d.addEventListener('click', () => select({type: 'thought', id: t.id}));
+    d.addEventListener('click', () => {
+      revealThought(t.id);
+      select({type: 'thought', id: t.id});
+    });
     list.append(d);
   });
   box.append(list);
@@ -719,7 +737,12 @@ function renderActors() {
   const actors = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   if (ACTOR_SEL && !counts[ACTOR_SEL]) ACTOR_SEL = null;
   if (actors.length < 2) return;  // a single writer needs no legend
-  actors.forEach(a => {
+  // COG-072: a shared journal accumulates dozens of one-shot hook writers —
+  // the legend shows the top writers, not a wall of avatars
+  const MAX_ACTORS = 12;
+  const shown = actors.slice(0, MAX_ACTORS);
+  if (ACTOR_SEL && !shown.includes(ACTOR_SEL)) shown.push(ACTOR_SEL);
+  shown.forEach(a => {
     const c = el('span', 'actorchip' + (ACTOR_SEL === a ? ' active' : ''));
     c.append(avatar(a), el('span', null, a), el('span', 'muted', counts[a]));
     c.title = 'highlight thoughts by ' + a;
@@ -730,6 +753,11 @@ function renderActors() {
     });
     box.append(c);
   });
+  if (actors.length > shown.length) {
+    const rest = el('span', 'chip', '+' + (actors.length - shown.length) + ' writers');
+    rest.title = actors.filter(a => !shown.includes(a)).join(', ');
+    box.append(rest);
+  }
 }
 
 function applyDim() {
@@ -744,10 +772,51 @@ function applyDim() {
   });
 }
 
+function viewMode() {
+  // COG-072 (B): explicit choice wins; otherwise a multi-project journal
+  // reads as threads of work, a single-project one as the branch DAG
+  const explicit = $('#f-view').value;
+  if (explicit) return explicit;
+  const projs = new Set();
+  STATE.graph.forEach(n => (n.projects || []).forEach(p => projs.add(p)));
+  return projs.size > 1 ? 'projects' : 'branches';
+}
+
+function computeSegments(nodes) {
+  // COG-072 (A): anchors partition the (newest-first) timeline into chapters —
+  // a segment is an anchored thought plus everything older up to the next anchor
+  const segs = [];
+  let cur = null;
+  for (const n of nodes) {
+    if (n.anchors.length) {
+      segs.push(cur = {key: n.anchors.join('|'), anchors: n.anchors, nodes: []});
+    } else if (!cur) {
+      segs.push(cur = {key: '~head', anchors: [], nodes: []});
+    }
+    cur.nodes.push(n);
+  }
+  return segs;
+}
+
+function segmentOf(id) {
+  return computeSegments(STATE.graph).find(s => s.nodes.some(n => n.id === id));
+}
+
+function revealThought(id) {
+  const seg = segmentOf(id);
+  if (seg && EXPANDED_SEGS && !EXPANDED_SEGS.has(seg.key)) {
+    EXPANDED_SEGS.add(seg.key);
+    renderGraph();
+  }
+  const e = document.querySelector('.thought[data-id="' + id + '"]');
+  if (e) e.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
 function renderGraph() {
   const box = $('#graph');
   const scroll = box.scrollTop;
   box.innerHTML = '';
+  $('#lanes').innerHTML = '';
   DOTS = {};
   renderActors();
   const nodes = STATE.graph;
@@ -755,60 +824,150 @@ function renderGraph() {
     box.append(el('div', 'empty', 'journal is empty — no thoughts yet'));
     return;
   }
-  const H = 46, XW = 14, PAD = 12;
-  const row = {}; nodes.forEach((n, i) => { row[n.id] = i; });
-  const lanes = [], col = {};
-  for (const n of nodes) {
-    let c = lanes.indexOf(n.id);
-    if (c === -1) {
-      const f = lanes.indexOf(null);
-      if (f === -1) { c = lanes.length; lanes.push(n.id); } else { c = f; lanes[f] = n.id; }
-    }
-    for (let i = 0; i < lanes.length; i++) if (lanes[i] === n.id && i !== c) lanes[i] = null;
-    col[n.id] = c;
-    const ps = n.parents || [];
-    ps.forEach((p, j) => {
-      if (j === 0) { lanes[c] = p; }
-      else if (!lanes.includes(p)) {
-        const f = lanes.indexOf(null);
-        if (f === -1) lanes.push(p); else lanes[f] = p;
-      }
+  const mode = viewMode();
+  const H = 46, HS = 30, XW = 14, PAD = 12;
+
+  // --- chapters (COG-072 A): headers + rows of the expanded segments ---
+  const segs = computeSegments(nodes);
+  const segmented = segs.length > 1 || segs[0].anchors.length > 0;
+  if (EXPANDED_SEGS === null) EXPANDED_SEGS = new Set(segmented ? [segs[0].key] : []);
+  const rows = [];
+  if (segmented) {
+    segs.forEach((seg, i) => {
+      rows.push({seg, idx: i, h: HS});
+      if (EXPANDED_SEGS.has(seg.key)) seg.nodes.forEach(n => rows.push({n, h: H}));
     });
-    if (!ps.length) lanes[c] = null;
+  } else {
+    nodes.forEach(n => rows.push({n, h: H}));
   }
-  let maxc = 0; for (const k in col) maxc = Math.max(maxc, col[k]);
-  const railW = PAD * 2 + (maxc + 1) * XW;
-  const x = id => PAD + col[id] * XW + 4;
-  const y = id => row[id] * H + H / 2;
+  let off = 0;
+  const yOf = new Map();
+  rows.forEach(r => { r.y = off + r.h / 2; if (r.n) yOf.set(r.n.id, r.y); off += r.h; });
+
+  // --- lane geometry: branch DAG columns or project swimlanes (COG-072 B) ---
+  let colOf, laneCount, laneFill;
+  if (mode === 'projects') {
+    const counts = {};
+    let metaSeen = false;
+    nodes.forEach(n => {
+      if (!(n.projects || []).length) { metaSeen = true; return; }
+      n.projects.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+    });
+    const laneProjs = Object.keys(counts)
+      .sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    const metaLane = metaSeen ? laneProjs.length : -1;  // muted lane, rightmost
+    const laneIdx = {}; laneProjs.forEach((p, i) => { laneIdx[p] = i; });
+    laneCount = laneProjs.length + (metaSeen ? 1 : 0);
+    // dominant project = leftmost (most active) involved lane
+    colOf = n => (n.projects || []).length
+      ? Math.min(...n.projects.map(p => laneIdx[p])) : metaLane;
+    laneFill = i => i === metaLane ? 'var(--muted)' : projColor(laneProjs[i]);
+    const legend = $('#lanes');
+    laneProjs.forEach(p => {
+      const c = projChip(p);
+      c.append(el('span', 'muted', ' ' + counts[p]));
+      legend.append(c);
+    });
+    if (metaSeen) legend.append(el('span', 'chip', 'no project'));
+    rows.filter(r => r.n).forEach(r => {
+      r.lanes = (r.n.projects || []).length
+        ? distinct(r.n.projects.map(p => laneIdx[p])) : [metaLane];
+    });
+  } else {
+    const lanes = [], col = {};
+    for (const n of nodes) {
+      let c = lanes.indexOf(n.id);
+      if (c === -1) {
+        const f = lanes.indexOf(null);
+        if (f === -1) { c = lanes.length; lanes.push(n.id); } else { c = f; lanes[f] = n.id; }
+      }
+      for (let i = 0; i < lanes.length; i++) if (lanes[i] === n.id && i !== c) lanes[i] = null;
+      col[n.id] = c;
+      const ps = n.parents || [];
+      ps.forEach((p, j) => {
+        if (j === 0) { lanes[c] = p; }
+        else if (!lanes.includes(p)) {
+          const f = lanes.indexOf(null);
+          if (f === -1) lanes.push(p); else lanes[f] = p;
+        }
+      });
+      if (!ps.length) lanes[c] = null;
+    }
+    let maxc = 0; for (const k in col) maxc = Math.max(maxc, col[k]);
+    colOf = n => col[n.id];
+    laneCount = maxc + 1;
+    laneFill = laneColor;
+  }
+  const railW = PAD * 2 + laneCount * XW;
+  const laneX = i => PAD + i * XW + 4;
+  const x = n => laneX(colOf(n));
+
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('width', railW);
-  svg.setAttribute('height', nodes.length * H);
+  svg.setAttribute('height', off);
   svg.setAttribute('class', 'rail');
-  for (const n of nodes) {
-    for (const p of (n.parents || [])) {
-      if (!(p in row)) continue;
-      const x1 = x(n.id), y1 = y(n.id), x2 = x(p), y2 = y(p), m = (y1 + y2) / 2;
-      const path = document.createElementNS(NS, 'path');
-      path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${m}, ${x2} ${m}, ${x2} ${y2}`);
-      path.setAttribute('class', 'edge');
-      // forks and merges take the color of the deeper (branch-side) lane
-      path.style.stroke = laneColor(Math.max(col[n.id], col[p]));
-      svg.append(path);
+  const visible = rows.filter(r => r.n);
+  if (mode === 'projects') {
+    // continuous per-project threads across visible rows (collapsed chapters
+    // are bridged) — the parent DAG is one toggle away in branches view
+    for (let lane = 0; lane < laneCount; lane++) {
+      let prevY = null;
+      visible.forEach(r => {
+        if (!r.lanes.includes(lane)) return;
+        if (prevY !== null) {
+          const line = document.createElementNS(NS, 'path');
+          line.setAttribute('d', `M ${laneX(lane)} ${prevY} L ${laneX(lane)} ${r.y}`);
+          line.setAttribute('class', 'edge');
+          line.style.stroke = laneFill(lane);
+          svg.append(line);
+        }
+        prevY = r.y;
+      });
+    }
+    visible.filter(r => r.lanes.length > 1).forEach(r => {
+      const xs = r.lanes.map(laneX);
+      const link = document.createElementNS(NS, 'path');
+      link.setAttribute('d', `M ${Math.min(...xs)} ${r.y} L ${Math.max(...xs)} ${r.y}`);
+      link.setAttribute('class', 'edge');
+      link.style.stroke = laneFill(colOf(r.n));
+      svg.append(link);
+      r.lanes.filter(l => l !== colOf(r.n)).forEach(l => {
+        const sat = document.createElementNS(NS, 'circle');
+        sat.setAttribute('cx', laneX(l)); sat.setAttribute('cy', r.y);
+        sat.setAttribute('r', 2.5);
+        sat.style.fill = laneFill(l);
+        svg.append(sat);
+      });
+    });
+  } else {
+    for (const r of visible) {
+      for (const p of (r.n.parents || [])) {
+        if (!yOf.has(p)) continue;  // parent inside a collapsed chapter
+        const pn = nodes.find(o => o.id === p);
+        const x1 = x(r.n), y1 = r.y, x2 = x(pn), y2 = yOf.get(p), m = (y1 + y2) / 2;
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${m}, ${x2} ${m}, ${x2} ${y2}`);
+        path.setAttribute('class', 'edge');
+        // forks and merges take the color of the deeper (branch-side) lane
+        path.style.stroke = laneColor(Math.max(colOf(r.n), colOf(pn)));
+        svg.append(path);
+      }
     }
   }
-  for (const n of nodes) {
+  for (const r of visible) {
+    const n = r.n;
     if (n.anchors.length) {
       const ring = document.createElementNS(NS, 'circle');
-      ring.setAttribute('cx', x(n.id)); ring.setAttribute('cy', y(n.id));
+      ring.setAttribute('cx', x(n)); ring.setAttribute('cy', r.y);
       ring.setAttribute('r', 8); ring.setAttribute('class', 'ring');
       svg.append(ring);
     }
     const dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('cx', x(n.id)); dot.setAttribute('cy', y(n.id));
+    dot.setAttribute('cx', x(n)); dot.setAttribute('cy', r.y);
     dot.setAttribute('r', n.operation === 'merge' ? 5.5 : 4.5);
     dot.setAttribute('class', 'dot ' + (n.operation === 'merge' ? 'merge' : 'commit'));
-    dot.style.fill = laneColor(col[n.id]);
+    dot.style.fill = laneFill(colOf(n));
     if (n.operation === 'merge') {
       dot.style.stroke = 'var(--fg)';
       dot.style.strokeWidth = '1.2';
@@ -819,10 +978,33 @@ function renderGraph() {
   box.append(svg);
   const list = el('div', 'rows');
   list.style.marginLeft = railW + 'px';
-  nodes.forEach(n => {
+  rows.forEach(r => {
+    if (r.seg) {
+      const open = EXPANDED_SEGS.has(r.seg.key);
+      const d = el('div', 'seg');
+      d.style.height = r.h + 'px';
+      d.append(el('span', 'chev', open ? '▾' : '▸'));
+      if (r.seg.anchors.length) {
+        r.seg.anchors.forEach(a => d.append(el('span', 'chip anchor', '⚓ ' + a)));
+      } else {
+        const next = segs[r.idx + 1];
+        d.append(el('span', null, next && next.anchors.length
+          ? 'since ⚓ ' + next.anchors[0] : 'work in progress'));
+      }
+      d.append(el('span', 'count', r.seg.nodes.length + ' thoughts'),
+               el('span', 'segline'));
+      d.title = open ? 'collapse this chapter' : 'expand this chapter';
+      d.addEventListener('click', () => {
+        if (open) EXPANDED_SEGS.delete(r.seg.key); else EXPANDED_SEGS.add(r.seg.key);
+        renderGraph();
+      });
+      list.append(d);
+      return;
+    }
+    const n = r.n;
     const d = el('div', 'thought');
     d.dataset.id = n.id;
-    d.style.height = H + 'px';
+    d.style.height = r.h + 'px';
     if (SEL && SEL.type === 'thought' && SEL.id === n.id) d.classList.add('sel');
     const l1 = el('div', 'l1');
     l1.append(avatar(n.author), el('span', 'msg', n.message));
@@ -849,7 +1031,8 @@ function renderGraph() {
 }
 
 const URL_KEYS = {project: 'f-project', kind: 'f-kind',
-                  subject: 'f-subject', predicate: 'f-predicate'};
+                  subject: 'f-subject', predicate: 'f-predicate',
+                  view: 'f-view'};
 
 function populateFilters() {
   fillSelect($('#f-project'),
@@ -1143,9 +1326,8 @@ function renderFactDetail(box, title) {
     d.append(el('span', 'mono muted', short(tid)),
       el('span', null, n ? ' ' + n.message + ' · ' + fmtTs(n.timestamp) : ''));
     d.addEventListener('click', () => {
+      revealThought(tid);  // expands a collapsed chapter before scrolling
       select({type: 'thought', id: tid});
-      const e = document.querySelector('.thought[data-id="' + tid + '"]');
-      if (e) e.scrollIntoView({behavior: 'smooth', block: 'center'});
     });
     box.append(d);
   }
@@ -1155,6 +1337,7 @@ function renderFactDetail(box, title) {
 function init() {
   ['f-subject', 'f-predicate', 'f-project', 'f-kind'].forEach(id =>
     document.getElementById(id).addEventListener('input', onFilterChange));
+  $('#f-view').addEventListener('change', () => { syncUrl(); renderGraph(); });
   $('#detail-close').addEventListener('click', () => select(null));
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && SEL) select(null);

@@ -10,6 +10,19 @@ The version names the SOFTWARE. The repository FORMAT is versioned
 separately (`repositoryFormatVersion` in `.cogit/config`, currently 1)
 and only changes through an ADR plus regenerated test vectors.
 
+## [0.4.0] — 2026-07-12
+
+### Added
+- Viewer: the journal now reads like git (COG-072, owner-picked design).
+  Project swimlanes — every project is its own colored lane, thoughts
+  connect into continuous per-project threads, multi-project thoughts
+  span their lanes; the branch-DAG layout stays one toggle away
+  (`view=` URL param, auto-picked: multi-project journal → projects,
+  else branches). Anchor chapters — anchors partition the timeline into
+  collapsible sections with the newest expanded, so a 250-thought
+  journal opens as a table of contents of milestones (and the DOM
+  shrinks accordingly). Jumps from recap/blame expand the right chapter.
+
 ## [0.3.0] — 2026-07-12
 
 ### Added

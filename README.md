@@ -23,10 +23,10 @@ beliefs, and blame for a confirmed root cause](docs/assets/cogit-viewer.png)
 
 *The bundled read-only web viewer on a debugging session: a competing
 hypothesis on its own colored branch lane, three writers with their own
-avatars (who wrote what — Rule 10 attribution), an anchored milestone, the
-same root-cause claim strengthening from 72% (inference) to 98% (verified)
-with the observations it was derived from (premises), and the exact
-thought that introduced it.*
+avatars (who wrote what — Rule 10 attribution), an anchored milestone
+folding the timeline into collapsible chapters, the same root-cause claim
+strengthening from 72% (inference) to 98% (verified) with the observations
+it was derived from (premises), and the exact thought that introduced it.*
 
 ## Status
 
@@ -136,12 +136,17 @@ python3 prototype/integrations/web_viewer.py --repo ~/.cogit-journal/my-project
 # read-only UI at http://127.0.0.1:8323/  (or --snapshot journal.html)
 ```
 
-The DAG draws each branch on its own colored lane; every thought carries
-its writer's avatar and the project threads it touched. Click an actor in
-the legend or a project chip to light up just that line of work; long
-belief values expand in place; filters live in the URL, so a filtered
-view is bookmarkable. `deploy/` runs the same viewer as a read-only
-container (`docker compose up -d`).
+The graph has two layouts (COG-072): a multi-project journal opens as
+**project swimlanes** — every project is its own colored thread of work,
+git-branch style, even though the timeline is one shared line — while a
+branch-forked journal opens as the branch DAG; the `view:` toggle (and
+`?view=` URL param) switches at will. Anchors fold the timeline into
+collapsible chapters, so a long journal opens as a table of contents of
+milestones. Every thought carries its writer's avatar and the project
+threads it touched. Click an actor in the legend or a project chip to
+light up just that line of work; long belief values expand in place;
+filters live in the URL, so a filtered view is bookmarkable. `deploy/`
+runs the same viewer as a read-only container (`docker compose up -d`).
 
 Run the test suites:
 

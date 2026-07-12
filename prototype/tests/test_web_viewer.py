@@ -128,6 +128,10 @@ class ViewerHttpTests(unittest.TestCase):
         for marker in (b'id="health-card"', b"familyLens", b"If-None-Match",
                        b"remediationPayload"):
             self.assertIn(marker, body)
+        # COG-072: layout toggle, project swimlanes, anchor chapters
+        for marker in (b'id="f-view"', b'id="lanes"', b"computeSegments",
+                       b"revealThought", b"viewMode"):
+            self.assertIn(marker, body)
 
     def test_unknown_path_is_json_404(self):
         with self.assertRaises(urllib.error.HTTPError) as ctx:

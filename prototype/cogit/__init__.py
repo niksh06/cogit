@@ -2,4 +2,4 @@
 
 # Must match the CHANGELOG.md top heading and both Cargo.toml versions
 # (tools/interop-test.sh enforces the parity).
-__version__ = "0.3.0"
+__version__ = "0.4.0"
