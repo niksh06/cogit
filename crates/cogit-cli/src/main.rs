@@ -18,7 +18,11 @@ use cogit_core::time::now_utc;
 use cogit_core::verify::verify_repository;
 
 #[derive(Parser)]
-#[command(name = "cogit", about = "Cogit: version control for agent cognition and reasoning provenance.")]
+#[command(
+    name = "cogit",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (rs)"),
+    about = "Cogit: version control for agent cognition and reasoning provenance."
+)]
 struct Cli {
     /// repository path (default: nearest .cogit upward)
     #[arg(long, global = true)]

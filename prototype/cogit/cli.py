@@ -5,6 +5,7 @@ import json
 import os
 import sys
 
+from . import __version__
 from .canonical import parse_json
 from .errors import CogitError, UserError
 from .objects import CLAIM_KINDS
@@ -715,6 +716,7 @@ def build_parser():
         prog="cogit",
         description="Cogit: version control for agent cognition and reasoning provenance.",
     )
+    parser.add_argument("--version", action="version", version=f"cogit {__version__} (py)")
     parser.add_argument("--repo", help="repository path (default: nearest .cogit upward)")
     sub = parser.add_subparsers(dest="command", required=True)
 

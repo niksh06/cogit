@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+from cogit import __version__  # noqa: E402
 from cogit.errors import CogitError  # noqa: E402
 from cogit.repo import Repository, init_repository  # noqa: E402
 from cogit.secrets import reject_suspected_secrets  # noqa: E402
@@ -289,7 +290,8 @@ def on_session_start(payload):
         return
     scope = f" (project {project})" if project else ""
     origin = recap.get("from_anchor") or "root"
-    print(f"cogit re-anchor{scope}: {len(doc['facts'])} active beliefs; "
+    print(f"cogit re-anchor{scope} [cogit-py/{__version__}]: "
+          f"{len(doc['facts'])} active beliefs; "
           f"since {origin}: {len(recap['thoughts'])} thought(s), "
           f"+{len(recap['added'])}/-{len(recap['removed'])} beliefs. Recent:")
     for thought in doc["log"]:

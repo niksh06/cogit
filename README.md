@@ -33,7 +33,10 @@ thought that introduced it.*
 Working MVP. The Python reference implementation and a full Rust port
 drive **one repository interchangeably** (`tools/interop-test.sh`); the
 object format is frozen by golden test vectors; agents can use it live
-today through the MCP server.
+today through the MCP server. Releases are recorded in
+[`CHANGELOG.md`](CHANGELOG.md) — its top heading is the authoritative
+version, both CLIs report it via `--version`, and the interop suite
+fails if any copy drifts.
 
 - `docs/` — PRD, ADRs, specs (object format, repository layout, CLI contract),
   invariants, test strategy, roadmap, threat model, recovery playbook.

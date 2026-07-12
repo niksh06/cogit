@@ -20,6 +20,10 @@ This document defines the MVP command-line behavior for Cogit. The CLI is a porc
   prefixes are user errors. Ref names take precedence over prefixes.
 - Commands that mutate refs append reflog entries.
 - Commands that fail must leave refs and index in a consistent state.
+- `cogit --version` prints `cogit <semver> (<impl>)` and exits 0, where
+  `<impl>` is `py` or `rs` (COG-070). The semver must match the topmost
+  release heading of `CHANGELOG.md` — the version's source of truth —
+  in every implementation (enforced by `tools/interop-test.sh`).
 
 ## Exit Codes
 

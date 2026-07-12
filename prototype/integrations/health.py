@@ -21,6 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+from cogit import __version__  # noqa: E402
 from cogit.errors import CogitError, UserError  # noqa: E402
 from cogit.repo import Repository, compact_rows, normalize_project_slug  # noqa: E402
 from cogit.verify import verify_repository  # noqa: E402
@@ -78,6 +79,8 @@ def health(repo, project=None, since=None, top=10):
 
     doc = {
         "project": project,
+        # COG-070: name the reader build — version skew is invisible otherwise
+        "reader": "cogit-py/" + __version__,
         "projects_in_journal": projects,
         "integrity": integrity,
         "beliefs": {

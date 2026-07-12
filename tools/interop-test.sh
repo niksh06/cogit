@@ -26,6 +26,18 @@ TS1=2026-07-02T20:00:01Z; TS2=2026-07-02T20:00:02Z; TS3=2026-07-02T20:00:03Z
 TS4=2026-07-02T20:00:04Z; TS5=2026-07-02T20:00:05Z; TS6=2026-07-02T20:00:06Z
 TS7=2026-07-02T20:00:07Z; TS8=2026-07-02T20:00:08Z
 
+step "versions agree with CHANGELOG.md (COG-070)"
+PYV=$($PY --version | awk '{print $2}')
+RSV=$($RUST --version | awk '{print $2}')
+CHV=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' "$ROOT/CHANGELOG.md" | head -1)
+[ -n "$CHV" ] || fail "CHANGELOG.md has no release heading"
+[ "$PYV" = "$CHV" ] || fail "python reports $PYV, CHANGELOG says $CHV"
+[ "$RSV" = "$CHV" ] || fail "rust reports $RSV, CHANGELOG says $CHV (stale target/debug build?)"
+for T in "$ROOT/crates/cogit-core/Cargo.toml" "$ROOT/crates/cogit-cli/Cargo.toml"; do
+  grep -q "^version = \"$CHV\"" "$T" || fail "$T version drifted from CHANGELOG $CHV"
+done
+ok
+
 step "python init, rust status reads it"
 $PY init . >/dev/null
 $RUST status --json | grep -q '"branch": "main"' || fail "rust cannot read python init"

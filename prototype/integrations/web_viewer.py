@@ -208,7 +208,7 @@ def render_page(state_json: str = None) -> str:
     if state_json is not None:
         # '<' is escaped so fact text can never break out of the script tag.
         inject = "<script>window.COGIT_STATE = %s;</script>" % state_json.replace("<", "\\u003c")
-    return PAGE.replace("<!--STATE-->", inject)
+    return PAGE.replace("<!--STATE-->", inject).replace("__COGIT_VERSION__", __version__)
 
 
 def write_snapshot(repo: Repository, out_path: str) -> str:
@@ -441,6 +441,7 @@ tr.expand td { border-top:none; padding-top:0; }
 <body>
 <header>
   <span class="brand">&#8980; cogit</span>
+  <span class="mono muted" title="viewer build (COG-070): a stale container shows a stale version">v__COGIT_VERSION__</span>
   <span id="repo" class="mono muted"></span>
   <span id="pos"></span>
   <span id="counts" class="muted"></span>
