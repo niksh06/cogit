@@ -263,6 +263,14 @@ impl Repository {
         let claim_oid = if let Some(claim_value) = map.get("claim") {
             let mut claim = claim_value.as_object().cloned().unwrap_or_default();
             claim.entry("type".to_owned()).or_insert(json!("claim"));
+            // COG-073: phrase subjects split families the same way case-split
+            // projects did — normalize at the choke point
+            if let Some(subject) = claim.get("subject").and_then(Value::as_str).map(str::to_owned) {
+                let normalized = Self::normalize_subject(&subject);
+                if normalized != subject {
+                    claim.insert("subject".to_owned(), json!(normalized));
+                }
+            }
             // COG-063: normalize the project qualifier at the write choke point
             if let Some(project) = claim
                 .get("qualifiers")
@@ -595,6 +603,50 @@ impl Repository {
 
     /// One atomic thought: remove the target with reason 'superseded' and
     /// assert a replacement in the SAME claim family (COG-056).
+    /// COG-073: resolve THE active assertion of a (subject, predicate) family
+    /// so lifecycle ops need no id lookup first. Exactly one active
+    /// non-negation match is required: zero is a clean 'add-fact instead'
+    /// error; several is R11 dirt the caller must resolve explicitly by id
+    /// (conservative, like merge: never guess).
+    pub fn resolve_family(
+        &self,
+        subject: &str,
+        predicate: &str,
+        project: Option<&str>,
+    ) -> Result<String> {
+        let facts = self.facts(None, Some(subject), Some(predicate), project)?;
+        let empty = Vec::new();
+        let rows: Vec<&Value> = facts["facts"]
+            .as_array()
+            .unwrap_or(&empty)
+            .iter()
+            .filter(|row| !row["negation"].as_bool().unwrap_or(false))
+            .collect();
+        let scope = project.map(|p| format!(" (project {p})")).unwrap_or_default();
+        if rows.is_empty() {
+            return user_err(format!(
+                "lifecycle: no active fact for '{subject} {predicate}'{scope} — \
+                 record a new one with add-fact"
+            ));
+        }
+        if rows.len() > 1 {
+            let rivals = rows
+                .iter()
+                .map(|row| {
+                    let object: String = row["object"].to_string().chars().take(48).collect();
+                    format!("{} = {}", row["assertion"].as_str().unwrap_or("?"), object)
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            return user_err(format!(
+                "lifecycle: {} active rivals in family '{subject} {predicate}'{scope} — \
+                 pick the target by assertion id: {rivals}",
+                rows.len()
+            ));
+        }
+        Ok(rows[0]["assertion"].as_str().unwrap_or("").to_owned())
+    }
+
     pub fn supersede_fact(
         &self,
         target: &str,
@@ -1692,9 +1744,17 @@ impl Repository {
             .join("-")
     }
 
+    /// COG-073: subjects are URIs, not phrases — same choke-point rule as
+    /// project slugs (COG-063). Punctuation (':', '/', '.') is untouched.
+    pub fn normalize_subject(value: &str) -> String {
+        Self::normalize_project_slug(value)
+    }
+
     fn row_matches(row: &Value, subject: Option<&str>, predicate: Option<&str>, project: Option<&str>) -> bool {
         if let Some(subject) = subject {
-            let actual = row["subject"].as_str().unwrap_or("");
+            // COG-073 read parity: history predates subject normalization
+            let subject = Self::normalize_subject(subject);
+            let actual = Self::normalize_subject(row["subject"].as_str().unwrap_or(""));
             match subject.strip_suffix('*') {
                 Some(prefix) => {
                     if !actual.starts_with(prefix) {

@@ -98,7 +98,8 @@ class BeliefQueryTests(unittest.TestCase):
 
     def test_subject_prefix_and_exact_filters(self):
         rows = self.repo.facts(subject="cogit:*")["facts"]
-        self.assertEqual(sorted(r["subject"] for r in rows), ["cogit:COG-035", "cogit:COG-036"])
+        # COG-073: subjects normalize at the write choke point (lowercase)
+        self.assertEqual(sorted(r["subject"] for r in rows), ["cogit:cog-035", "cogit:cog-036"])
         rows = self.repo.facts(subject="api:/orders")["facts"]
         self.assertEqual(len(rows), 1)
         self.assertEqual(self.repo.facts(subject="nothing:*")["facts"], [])

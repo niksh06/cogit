@@ -24,6 +24,11 @@ This document defines the MVP command-line behavior for Cogit. The CLI is a porc
   `<impl>` is `py` or `rs` (COG-070). The semver must match the topmost
   release heading of `CHANGELOG.md` — the version's source of truth —
   in every implementation (enforced by `tools/interop-test.sh`).
+- Claim subjects normalize at the write choke point in every
+  implementation (COG-073, like project qualifiers per COG-063):
+  lowercase, internal whitespace becomes `-`, punctuation untouched.
+  Subject read filters match case/whitespace-insensitively, so history
+  written before 0.5.0 stays reachable and in one family.
 
 ## Exit Codes
 
@@ -129,13 +134,19 @@ Rules:
 - A reason is required (`refuted`, `superseded`, or free text).
 - Removing a staged-but-uncommitted assertion unstages it.
 
-### `cogit supersede-fact <assertion-id> --object <v> --source <s> --confidence <bps>` (COG-056)
+### `cogit supersede-fact [<assertion-id>] --object <v> --source <s> --confidence <bps>` (COG-056)
 
 One atomic thought: removes the ACTIVE target with reason `superseded` and
 asserts a replacement in the SAME claim family.
 
 Rules:
 
+- COG-073 (all three lifecycle commands): the target may be addressed by
+  `--subject <s> --predicate <p>` (optionally `--project <slug>`) instead
+  of an assertion id. Exactly one active non-negation assertion must match
+  the family: zero matches is a `user` error pointing at `add-fact`;
+  several rivals is a `user` error listing the candidate ids — the command
+  never guesses (same conservatism as merge).
 - The target must be active in the current mindset; a stale target (already
   transitioned by another writer) is a clean `user` error, never a silent
   apply against newer state.
@@ -150,7 +161,7 @@ Rules:
 - Output exposes `old_assertion`, `old_claim`, the new `assertion`/`claim`
   and the `thought`.
 
-### `cogit refute-fact <assertion-id> --source <s> --confidence <bps>` (COG-056)
+### `cogit refute-fact [<assertion-id>] --source <s> --confidence <bps>` (COG-056)
 
 One atomic thought: removes EVERY active assertion of the target's claim
 with reason `refuted` and activates an explicit negation of that claim.
@@ -166,7 +177,7 @@ Rules:
 - Output exposes `refuted_claim`, `refuted_assertions`, the `negation`
   ids and the `thought`.
 
-### `cogit retire-fact <assertion-id>... --reason <text>` (COG-056)
+### `cogit retire-fact [<assertion-id>...] --reason <text>` (COG-056)
 
 One atomic thought: removes active assertions with an explicit reason,
 WITHOUT asserting falsity — no negation, no replacement implied.

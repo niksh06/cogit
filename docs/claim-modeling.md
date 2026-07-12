@@ -62,6 +62,16 @@ Renaming a subject silently splits history (invariant 4: same semantic
 text is not automatically the same fact). Prefer adding a qualifier over
 inventing a new subject spelling.
 
+Since 0.5.0 both runtimes enforce the slug shape at write time
+(COG-073, same discipline as project qualifiers): subjects are
+lowercased and internal whitespace becomes `-` before the claim is
+hashed — `"OSV Distro Full-Scope Land"` lands as
+`osv-distro-full-scope-land`. Punctuation (`:`, `/`, `.`, `#`) is
+untouched, so every URI shape above survives. Read filters match
+case-insensitively; history written before 0.5.0 stays one family.
+Note the example subjects use lowercase (`cogit:cog-015`-style) on new
+writes.
+
 ## Rule 4: calibrate confidence_bps honestly
 
 Basis points are cheap; miscalibration poisons downstream arbitration.

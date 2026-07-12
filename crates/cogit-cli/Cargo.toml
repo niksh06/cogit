@@ -1,6 +1,6 @@
 [package]
 name = "cogit-cli"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 description = "Cogit CLI (docs/spec/cli-contract.md) over cogit-core"
 license = "Apache-2.0"

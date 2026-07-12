@@ -103,8 +103,14 @@ enum Cmd {
     /// one atomic thought: retire the target with reason 'superseded' and assert a
     /// replacement in the same claim family (COG-056)
     SupersedeFact {
-        /// active assertion to supersede
-        assertion_id: String,
+        /// active assertion to supersede (or use --subject/--predicate, COG-073)
+        assertion_id: Option<String>,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        predicate: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long = "object")]
         object_value: Option<String>,
         #[arg(long = "object-json")]
@@ -131,8 +137,14 @@ enum Cmd {
     /// one atomic thought: remove ALL active assertions of the target's claim with
     /// reason 'refuted' and activate its negation (COG-056)
     RefuteFact {
-        /// active assertion whose claim is being refuted
-        assertion_id: String,
+        /// active assertion whose claim is being refuted (or --subject/--predicate)
+        assertion_id: Option<String>,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        predicate: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long)]
         source: Option<String>,
         #[arg(long)]
@@ -155,9 +167,14 @@ enum Cmd {
     /// one atomic thought: remove active assertions with an explicit reason,
     /// without asserting falsity (COG-056)
     RetireFact {
-        /// active assertion(s) to retire
-        #[arg(required = true)]
+        /// active assertion(s) to retire (or use --subject/--predicate, COG-073)
         assertion_ids: Vec<String>,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        predicate: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
         #[arg(long)]
         reason: String,
         #[arg(long, default_value = "agent")]
@@ -410,6 +427,29 @@ fn load_json_arg(value: &str) -> Result<Value> {
     Err(CoreError::User(format!(
         "'{value}' is neither a JSON object nor an existing file"
     )))
+}
+
+/// COG-073: lifecycle target by id OR by (subject, predicate[, project]) —
+/// the single active family member resolves server-side.
+fn resolve_lifecycle_target(
+    repo: &Repository,
+    op: &str,
+    assertion_id: Option<String>,
+    subject: &Option<String>,
+    predicate: &Option<String>,
+    project: &Option<String>,
+) -> Result<String> {
+    if let Some(id) = assertion_id {
+        return Ok(id);
+    }
+    match (subject, predicate) {
+        (Some(subject), Some(predicate)) => {
+            repo.resolve_family(subject, predicate, project.as_deref())
+        }
+        _ => Err(CoreError::User(format!(
+            "{op}: pass an assertion id, or --subject and --predicate"
+        ))),
+    }
 }
 
 /// Assertion object for supersede-fact / refute-fact (COG-056).
@@ -718,10 +758,13 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::SupersedeFact {
-            assertion_id, object_value, object_json, source, confidence, actor, method,
-            asserted_at, premises, message, timestamp, json,
+            assertion_id, subject, predicate, project, object_value, object_json, source,
+            confidence, actor, method, asserted_at, premises, message, timestamp, json,
         } => {
             let repo = open_repo(&cli.repo)?;
+            let assertion_id = resolve_lifecycle_target(
+                &repo, "supersede-fact", assertion_id, &subject, &predicate, &project,
+            )?;
             if object_value.is_none() && object_json.is_none() {
                 return Err(CoreError::User(
                     "supersede-fact: provide the replacement --object (or --object-json)".into(),
@@ -753,10 +796,13 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::RefuteFact {
-            assertion_id, source, confidence, actor, method, asserted_at, premises, message,
-            timestamp, json,
+            assertion_id, subject, predicate, project, source, confidence, actor, method,
+            asserted_at, premises, message, timestamp, json,
         } => {
             let repo = open_repo(&cli.repo)?;
+            let assertion_id = resolve_lifecycle_target(
+                &repo, "refute-fact", assertion_id, &subject, &predicate, &project,
+            )?;
             let assertion = build_lifecycle_assertion(
                 &repo, &source, confidence, &actor, &method, &asserted_at, &premises,
                 "refute-fact",
@@ -775,8 +821,18 @@ fn run(cli: Cli) -> Result<i32> {
             }
             Ok(0)
         }
-        Cmd::RetireFact { assertion_ids, reason, author, message, timestamp, json } => {
+        Cmd::RetireFact {
+            assertion_ids, subject, predicate, project, reason, author, message, timestamp,
+            json,
+        } => {
             let repo = open_repo(&cli.repo)?;
+            let assertion_ids = if assertion_ids.is_empty() {
+                vec![resolve_lifecycle_target(
+                    &repo, "retire-fact", None, &subject, &predicate, &project,
+                )?]
+            } else {
+                assertion_ids
+            };
             let result = repo.retire_fact(
                 &assertion_ids, &reason, &author, message.as_deref(), timestamp.as_deref(),
             )?;

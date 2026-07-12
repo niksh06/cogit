@@ -146,18 +146,20 @@ class RatchetTests(unittest.TestCase):
     def setUp(self):
         self.tmp, self.repo = make_repo()
         self.addCleanup(self.tmp.cleanup)
-        # old debt BEFORE the baseline
+        # old debt BEFORE the baseline. COG-073 note: whitespace subjects can
+        # no longer be produced through porcelain (choke-point slug), so the
+        # ratchet fodder is date-in-subject debt (R3-ephemeral-subject).
         self.debt = self.repo.micro_commit(
-            doc("legacy topic", "state", "ok"), timestamp=ts(0))
+            doc("legacy:2026-01-01", "state", "ok"), timestamp=ts(0))
         self.repo.anchor("baseline", "HEAD", timestamp=ts(1))
 
     def test_existing_vs_new_classification(self):
-        self.repo.micro_commit(doc("fresh topic", "state", "ok"), timestamp=ts(2))
+        self.repo.micro_commit(doc("fresh:2026-01-02", "state", "ok"), timestamp=ts(2))
         report = lint_mod.lint(self.repo, since="baseline")
         ages = {f["subject"]: f["age"] for f in report["findings"]
-                if f["rule"] == "R3-subject-whitespace"}
-        self.assertEqual(ages["legacy topic"], "existing")
-        self.assertEqual(ages["fresh topic"], "new")
+                if f["rule"] == "R3-ephemeral-subject"}
+        self.assertEqual(ages["legacy:2026-01-01"], "existing")
+        self.assertEqual(ages["fresh:2026-01-02"], "new")
         self.assertEqual(report["baseline"]["new_warnings"],
                          sum(1 for f in report["findings"]
                              if f["age"] == "new" and f["severity"] == "warn"))
@@ -166,12 +168,12 @@ class RatchetTests(unittest.TestCase):
         self.repo.retire_fact([self.debt["assertion"]], "cleanup", "tester", timestamp=ts(2))
         report = lint_mod.lint(self.repo, since="baseline")
         subjects = {f["subject"] for f in report["findings"]}
-        self.assertNotIn("legacy topic", subjects)  # active-only: debt is gone
+        self.assertNotIn("legacy:2026-01-01", subjects)  # active-only: debt is gone
         # reintroducing the same shape after the baseline is NEW debt
-        self.repo.micro_commit(doc("legacy topic", "state", "ok", when=ts(3)),
+        self.repo.micro_commit(doc("legacy:2026-01-01", "state", "ok", when=ts(3)),
                                timestamp=ts(3))
         report = lint_mod.lint(self.repo, since="baseline")
-        again = [f for f in report["findings"] if f["subject"] == "legacy topic"]
+        again = [f for f in report["findings"] if f["subject"] == "legacy:2026-01-01"]
         self.assertTrue(again)
         self.assertTrue(all(f["age"] == "new" for f in again), again)
 
@@ -186,7 +188,7 @@ class RatchetTests(unittest.TestCase):
 
     def test_bounded_output_keeps_totals_exact(self):
         for n in range(4):
-            self.repo.micro_commit(doc(f"noisy subject {n}", "state", "ok", when=ts(2 + n)),
+            self.repo.micro_commit(doc(f"noisy:2026-01-0{n + 1}", "state", "ok", when=ts(2 + n)),
                                    timestamp=ts(2 + n))
         report = lint_mod.lint(self.repo)
         shaped = lint_mod.shape_report(report, limit=2)
@@ -194,8 +196,8 @@ class RatchetTests(unittest.TestCase):
         self.assertEqual(shaped["matched"], len(report["findings"]))
         self.assertEqual(shaped["truncated"], len(report["findings"]) - 2)
         self.assertEqual(shaped["by_rule"], report["by_rule"])  # totals untouched
-        only_rule = lint_mod.shape_report(report, rule="R3-subject-whitespace")
-        self.assertTrue(all(f["rule"] == "R3-subject-whitespace"
+        only_rule = lint_mod.shape_report(report, rule="R3-ephemeral-subject")
+        self.assertTrue(all(f["rule"] == "R3-ephemeral-subject"
                             for f in only_rule["findings"]))
         summary = lint_mod.shape_report(report, summary=True)
         self.assertEqual(summary["findings"], [])

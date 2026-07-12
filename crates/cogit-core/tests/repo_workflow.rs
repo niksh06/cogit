@@ -482,3 +482,32 @@ fn thoughts_carry_writer_provenance() {
     thought["writer"] = json!("cogit-py/0.3.0+abc123"); // build suffix stays legal
     cogit_core::objects::validate_object(&thought).unwrap();
 }
+
+#[test]
+fn subject_slug_and_lifecycle_by_family() {
+    // COG-073: phrase subjects normalize at the choke point; a (subject,
+    // predicate) family resolves its single active member server-side
+    let (_dir, repo) = make_repo();
+    let mut doc = fact_doc("current_version", 9000);
+    doc["claim"]["subject"] = json!("Cogit:Release  Line");
+    repo.micro_commit(&doc, None, None, Some(&ts(0))).unwrap();
+    let rows = repo.facts(None, Some("COGIT:RELEASE-LINE"), None, None).unwrap();
+    assert_eq!(rows["facts"][0]["subject"], json!("cogit:release-line"));
+
+    let target = repo
+        .resolve_family("Cogit:Release Line", "current_version", None)
+        .unwrap();
+    assert_eq!(target, rows["facts"][0]["assertion"].as_str().unwrap());
+    // empty family is a clean 'add-fact instead' error
+    let err = repo.resolve_family("cogit:release-line", "nope", None).unwrap_err();
+    assert!(err.to_string().contains("add-fact"), "{err}");
+    // a rival makes resolution refuse and name candidates
+    let mut rival = fact_doc("current_version", 9000);
+    rival["claim"]["subject"] = json!("cogit:release-line");
+    rival["claim"]["object"] = json!("9.9.9");
+    repo.micro_commit(&rival, None, None, Some(&ts(1))).unwrap();
+    let err = repo
+        .resolve_family("cogit:release-line", "current_version", None)
+        .unwrap_err();
+    assert!(err.to_string().contains("2 active rivals"), "{err}");
+}

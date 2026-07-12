@@ -29,7 +29,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit.errors import CogitError, CorruptionError  # noqa: E402
-from cogit.repo import Repository, normalize_project_slug  # noqa: E402
+from cogit.repo import Repository, normalize_project_slug, normalize_subject  # noqa: E402
 
 BANDS = [  # cookbook bands, docs/claim-modeling.md Rule 4
     ("observed", 9800, 10001),
@@ -65,7 +65,8 @@ def _topo_oldest_first(thoughts):
 
 
 def family_key(row):
-    return (row["subject"], row["predicate"],
+    # COG-073: history predates subject normalization — one family, one key
+    return (normalize_subject(row["subject"]), row["predicate"],
             json.dumps(row["qualifiers"], sort_keys=True, ensure_ascii=False))
 
 

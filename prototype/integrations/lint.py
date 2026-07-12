@@ -32,7 +32,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from cogit.errors import CogitError, UserError  # noqa: E402
-from cogit.repo import Repository  # noqa: E402
+from cogit.repo import Repository, normalize_subject  # noqa: E402
 
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 STATE_PREDICATES = frozenset({"status", "state", "owner", "priority", "phase", "stage"})
@@ -117,7 +117,8 @@ def _rival_detail(row):
 
 
 def _family_id(row):
-    return (row["kind"], row["subject"], row["predicate"],
+    # COG-073: history predates subject normalization — one family, one id
+    return (row["kind"], normalize_subject(row["subject"]), row["predicate"],
             json.dumps(row.get("qualifiers", {}), sort_keys=True, ensure_ascii=False))
 
 

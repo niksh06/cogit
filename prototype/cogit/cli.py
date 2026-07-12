@@ -205,7 +205,9 @@ def cmd_supersede_fact(args):
     new_object = args.object_value if args.object_value is not None else parse_json(args.object_json)
     assertion = _build_lifecycle_assertion(repo, args, "supersede-fact")
     result = repo.supersede_fact(args.assertion_id, new_object, assertion,
-                                 message=args.message, timestamp=args.timestamp)
+                                 message=args.message, timestamp=args.timestamp,
+                                 subject=args.subject, predicate=args.predicate,
+                                 project=args.project)
     if args.json:
         print(json.dumps(result, sort_keys=True))
         return 0
@@ -219,7 +221,9 @@ def cmd_refute_fact(args):
     repo = _open_repo(args)
     assertion = _build_lifecycle_assertion(repo, args, "refute-fact")
     result = repo.refute_fact(args.assertion_id, assertion,
-                              message=args.message, timestamp=args.timestamp)
+                              message=args.message, timestamp=args.timestamp,
+                              subject=args.subject, predicate=args.predicate,
+                              project=args.project)
     if args.json:
         print(json.dumps(result, sort_keys=True))
         return 0
@@ -233,7 +237,9 @@ def cmd_refute_fact(args):
 def cmd_retire_fact(args):
     repo = _open_repo(args)
     result = repo.retire_fact(args.assertion_ids, args.reason, args.author,
-                              message=args.message, timestamp=args.timestamp)
+                              message=args.message, timestamp=args.timestamp,
+                              subject=args.subject, predicate=args.predicate,
+                              project=args.project)
     if args.json:
         print(json.dumps(result, sort_keys=True))
         return 0
@@ -777,26 +783,38 @@ def build_parser():
         p.add_argument("--timestamp", help="thought timestamp (tests)")
         p.add_argument("--json", action="store_true")
 
+    def family_flags(p):
+        # COG-073: lifecycle by (subject, predicate) — no id lookup needed
+        p.add_argument("--subject", help="family subject (alternative to the assertion id)")
+        p.add_argument("--predicate", help="family predicate (with --subject)")
+        p.add_argument("--project", help="scope family resolution to one project")
+
     p = sub.add_parser("supersede-fact",
                        help="one atomic thought: retire the target with reason 'superseded' "
                             "and assert a replacement in the same claim family (COG-056)")
-    p.add_argument("assertion_id", help="active assertion to supersede")
+    p.add_argument("assertion_id", nargs="?",
+                   help="active assertion to supersede (or use --subject/--predicate)")
     p.add_argument("--object", dest="object_value", help="replacement object (string)")
     p.add_argument("--object-json", help="replacement object as JSON (bool/int/string)")
+    family_flags(p)
     lifecycle_assertion_flags(p)
     p.set_defaults(func=cmd_supersede_fact)
 
     p = sub.add_parser("refute-fact",
                        help="one atomic thought: remove ALL active assertions of the target's "
                             "claim with reason 'refuted' and activate its negation (COG-056)")
-    p.add_argument("assertion_id", help="active assertion whose claim is being refuted")
+    p.add_argument("assertion_id", nargs="?",
+                   help="active assertion whose claim is being refuted (or --subject/--predicate)")
+    family_flags(p)
     lifecycle_assertion_flags(p)
     p.set_defaults(func=cmd_refute_fact)
 
     p = sub.add_parser("retire-fact",
                        help="one atomic thought: remove active assertions with an explicit "
                             "reason, without asserting falsity (COG-056)")
-    p.add_argument("assertion_ids", nargs="+", help="active assertion(s) to retire")
+    p.add_argument("assertion_ids", nargs="*",
+                   help="active assertion(s) to retire (or use --subject/--predicate)")
+    family_flags(p)
     p.add_argument("--reason", required=True, help="why (not 'refuted' — use refute-fact)")
     p.add_argument("--author", default="agent", help="thought author")
     p.add_argument("--message", "-m", help="thought message (default: derived)")

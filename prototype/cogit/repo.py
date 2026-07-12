@@ -50,6 +50,13 @@ def normalize_project_slug(value):
     return "-".join(value.strip().lower().split())
 
 
+def normalize_subject(value):
+    """COG-073: subjects are URIs, not phrases — same choke-point rule as
+    project slugs (COG-063): lowercase, internal whitespace becomes '-'.
+    Punctuation (':', '/', '.') is untouched; `project:area:entity` survives."""
+    return normalize_project_slug(value)
+
+
 def compact_rows(rows, max_chars=120):
     """COG-059 compact mode: long prose objects become a bounded preview.
 
@@ -235,6 +242,10 @@ class Repository:
         if "claim" in doc:
             claim = dict(doc["claim"])
             claim.setdefault("type", "claim")
+            if isinstance(claim.get("subject"), str):
+                # COG-073: phrase subjects split families the same way
+                # case-split projects did — normalize at the choke point
+                claim["subject"] = normalize_subject(claim["subject"])
             qualifiers = claim.get("qualifiers")
             if isinstance(qualifiers, dict) and isinstance(qualifiers.get("project"), str):
                 # COG-063: case-split projects are a field-proven trap
@@ -455,12 +466,46 @@ class Repository:
         claim = self._read_typed(assertion["claim"], "claim")
         return target, assertion, claim
 
+    def resolve_family(self, subject: str, predicate: str, project: str = None) -> str:
+        """COG-073: resolve THE active assertion of a (subject, predicate)
+        family so lifecycle ops need no id lookup first. Exactly one active
+        non-negation match is required: zero is a clean 'add-fact instead'
+        error; several is R11 dirt the caller must resolve explicitly by id
+        (conservative, like merge: never guess)."""
+        rows = self.facts(subject=subject, predicate=predicate, project=project)["facts"]
+        rows = [row for row in rows if not row["negation"]]
+        scope = f" (project {project})" if project else ""
+        if not rows:
+            raise UserError(
+                f"lifecycle: no active fact for '{subject} {predicate}'{scope} — "
+                "record a new one with add-fact")
+        if len(rows) > 1:
+            rivals = "; ".join(
+                f"{row['assertion']} = {str(row['object'])[:48]}" for row in rows)
+            raise UserError(
+                f"lifecycle: {len(rows)} active rivals in family "
+                f"'{subject} {predicate}'{scope} — pick the target by assertion id: {rivals}")
+        return rows[0]["assertion"]
+
+    def _family_or_target(self, op: str, target, subject, predicate, project):
+        if target is not None:
+            return target
+        if not subject or not predicate:
+            raise UserError(f"{op}: pass an assertion id, or subject= and predicate=")
+        return self.resolve_family(subject, predicate, project)
+
     def supersede_fact(self, target: str, new_object, assertion: dict,
-                       message: str = None, timestamp: str = None):
+                       message: str = None, timestamp: str = None,
+                       subject: str = None, predicate: str = None, project: str = None):
         """Replace an active belief in ONE thought (COG-056): remove the
         target with reason 'superseded' and assert a replacement in the SAME
         claim family — kind, subject, predicate and qualifiers are preserved;
-        only the object (and the new assertion's provenance) changes."""
+        only the object (and the new assertion's provenance) changes.
+
+        COG-073: the target may be addressed by (subject, predicate[, project])
+        instead of an assertion id — the single active family member resolves
+        server-side."""
+        target = self._family_or_target("supersede-fact", target, subject, predicate, project)
         target, old_assertion, claim = self._lifecycle_target(target)
         new_claim = {
             "type": "claim",
@@ -485,10 +530,13 @@ class Repository:
         }
 
     def refute_fact(self, target: str, assertion: dict,
-                    message: str = None, timestamp: str = None):
+                    message: str = None, timestamp: str = None,
+                    subject: str = None, predicate: str = None, project: str = None):
         """Structurally refute a claim in ONE thought (COG-056): remove EVERY
         active assertion of the target's claim with reason 'refuted' and
-        activate an explicit negation of that claim (invariant 25)."""
+        activate an explicit negation of that claim (invariant 25).
+        COG-073: family addressing as in supersede_fact."""
+        target = self._family_or_target("refute-fact", target, subject, predicate, project)
         target, old_assertion, claim = self._lifecycle_target(target)
         claim_oid = old_assertion["claim"]
         _branch, parent = self.head_info()
@@ -521,10 +569,14 @@ class Repository:
         }
 
     def retire_fact(self, targets: list, reason: str, author: str,
-                    message: str = None, timestamp: str = None):
+                    message: str = None, timestamp: str = None,
+                    subject: str = None, predicate: str = None, project: str = None):
         """Retire active beliefs in ONE thought (COG-056): explicit removal
         with a required reason, WITHOUT asserting falsity — no negation is
-        activated and no replacement is implied."""
+        activated and no replacement is implied.
+        COG-073: family addressing as in supersede_fact."""
+        if not targets and subject and predicate:
+            targets = [self.resolve_family(subject, predicate, project)]
         if not targets:
             raise UserError("retire-fact: at least one target assertion is required")
         if not reason or not reason.strip():
@@ -1227,10 +1279,13 @@ class Repository:
     @staticmethod
     def _row_matches(row, subject=None, predicate=None, project=None) -> bool:
         if subject is not None:
+            # COG-073 read parity: history predates subject normalization
+            subject = normalize_subject(subject)
+            row_subject = normalize_subject(row["subject"])
             if subject.endswith("*"):
-                if not row["subject"].startswith(subject[:-1]):
+                if not row_subject.startswith(subject[:-1]):
                     return False
-            elif row["subject"] != subject:
+            elif row_subject != subject:
                 return False
         if predicate is not None and row["predicate"] != predicate:
             return False

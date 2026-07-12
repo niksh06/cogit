@@ -45,7 +45,8 @@ class HookTests(unittest.TestCase):
         repo = Repository.open(self.tmp.name)
         facts = repo.facts()["facts"]
         self.assertEqual(len(facts), 1)
-        self.assertEqual(facts[0]["subject"], "tool:Bash")
+        # COG-073: subjects normalize at the write choke point (lowercase)
+        self.assertEqual(facts[0]["subject"], "tool:bash")
         self.assertEqual(repo.log()[0]["message"], "Turn checkpoint: 1 captured belief(s)")
 
     def test_selective_mode_ignores_noise(self):

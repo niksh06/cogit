@@ -382,6 +382,62 @@ class McpServerTests(unittest.TestCase):
         is_error, _ = self.client.call_tool("status")
         self.assertFalse(is_error)
 
+    def test_normalize_splits_prose_into_value_plus_detail(self):
+        # COG-073 §2: opt-in — the object stays a value, nothing is lost
+        prose = ("connection pool exhausted by retry storm; saw 98% saturation "
+                 "in grafana and three FAILED suites before the fix landed")
+        is_error, result = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "bug:orders", "predicate": "root_cause",
+            "object": prose, "project": "demo", "commit": True, "normalize": True,
+        })
+        self.assertFalse(is_error, result)
+        self.assertEqual(result["normalized"]["object"], prose)
+        _err, facts = self.client.call_tool("facts", {"subject": "bug:orders"})
+        row = facts["facts"][0]
+        self.assertEqual(row["object"], "connection pool exhausted by retry storm;")
+        self.assertLessEqual(len(row["object"].split()), 12)
+        _err, annos = self.client.call_tool(
+            "annotations", {"target": result["assertion"]})
+        bodies = [a["body"] for a in annos["annotations"]]
+        self.assertIn(prose, bodies)  # full original survives verbatim
+        # without the flag nothing is rewritten
+        is_error, plain = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "bug:plain", "predicate": "root_cause",
+            "object": prose, "project": "demo", "commit": True,
+        })
+        self.assertFalse(is_error)
+        self.assertNotIn("normalized", plain)
+        self.assertIn("hints", plain)  # the R2 nudge still fires
+
+    def test_lifecycle_by_family_over_mcp(self):
+        # COG-073 §1: no id lookup — subject+predicate addresses the family
+        is_error, _ = self.client.call_tool("add_fact", {
+            "kind": "agent_decision", "subject": "cogit:release",
+            "predicate": "current_version", "object": "0.4.1",
+            "project": "demo", "commit": True,
+        })
+        self.assertFalse(is_error)
+        is_error, result = self.client.call_tool("supersede_fact", {
+            "subject": "cogit:release", "predicate": "current_version",
+            "object": "0.5.0", "source": "agent:test", "confidence_bps": 9500,
+        })
+        self.assertFalse(is_error, result)
+        _err, facts = self.client.call_tool("facts", {"subject": "cogit:release"})
+        self.assertEqual([r["object"] for r in facts["facts"]], ["0.5.0"])
+        # neither addressing mode -> clean error, not a crash
+        is_error, message = self.client.call_tool("supersede_fact", {
+            "object": "x", "source": "agent:test", "confidence_bps": 9000})
+        self.assertTrue(is_error)
+        self.assertIn("subject", message)
+        # retire by family closes the loop
+        is_error, _ = self.client.call_tool("retire_fact", {
+            "subject": "cogit:release", "predicate": "current_version",
+            "reason": "test cleanup",
+        })
+        self.assertFalse(is_error)
+        _err, facts = self.client.call_tool("facts", {"subject": "cogit:release"})
+        self.assertEqual(facts["facts"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

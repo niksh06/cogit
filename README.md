@@ -124,10 +124,16 @@ the thought that introduced it. When a belief changes state, use the
 atomic lifecycle operations (COG-056): `supersede_fact` (new value, same
 claim family), `refute_fact` (structural negation, invariant 25) and
 `retire_fact` (explicit removal without asserting falsity) — each is one
-all-or-nothing thought. How to SHAPE one claim is
-`docs/claim-modeling.md`; the operating discipline around the journal —
-when to write, when not to, what keeps a shared journal from becoming a
-dump — is `docs/journal-discipline.md`.
+all-or-nothing thought, and since 0.5.0 each can address its target by
+`subject` + `predicate` instead of an assertion id (COG-073, the single
+active family member resolves server-side). Writing in-flow is cheap by
+design: subjects auto-slug at the write choke point, a minimal fact is
+four fields, rich nuance goes in `detail=`, and opt-in `normalize` keeps
+a prose object a value without losing a word. The write-time playbook
+shaped for agents is `skills/cogit-journaling/SKILL.md`; how to SHAPE
+one claim is `docs/claim-modeling.md`; the operating discipline around
+the journal — when to write, when not to, what keeps a shared journal
+from becoming a dump — is `docs/journal-discipline.md`.
 
 ## Watch a journal (web viewer)
 

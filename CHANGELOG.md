@@ -10,6 +10,36 @@ The version names the SOFTWARE. The repository FORMAT is versioned
 separately (`repositoryFormatVersion` in `.cogit/config`, currently 1)
 and only changes through an ADR plus regenerated test vectors.
 
+## [0.5.0] — 2026-07-12
+
+Agent-write ergonomics (COG-073) — first-hand dogfooding feedback from an
+agent user: cogit asked the writer to be a librarian at the exact moment
+it is an engineer. This release makes the right thing the cheap thing;
+the model itself does not budge.
+
+### Added
+- Lifecycle by family: `supersede-fact` / `refute-fact` / `retire-fact`
+  accept `subject` + `predicate` (+ optional `project`) instead of an
+  assertion id — the single active family member resolves server-side;
+  zero matches is a clean "add-fact instead" error, several rivals
+  refuse and list the candidates. Both runtimes, CLI and MCP.
+- Opt-in `normalize` on MCP `add_fact`/`record`: a prose object splits
+  deterministically — first clause stays the value (lint R2 threshold),
+  the FULL original lands verbatim as the `detail` annotation, and the
+  response reports the rewrite. Never applied silently.
+- `skills/cogit-journaling/SKILL.md`: the write-time distillation of
+  claim-modeling + journal discipline, shaped for agents (prose→triple
+  decomposition, lifecycle by family, when NOT to write).
+
+### Changed
+- Subjects normalize at the write choke point in both runtimes
+  (lowercase, whitespace→dash — punctuation untouched), exactly like
+  project slugs (COG-063): `"OSV Distro Full-Scope Land"` lands as
+  `osv-distro-full-scope-land`. Read filters and family computations
+  match case-insensitively, so pre-0.5.0 mixed-case history stays one
+  family. R3-subject-whitespace debt can no longer be produced through
+  porcelain.
+
 ## [0.4.1] — 2026-07-12
 
 ### Fixed

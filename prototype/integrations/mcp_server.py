@@ -14,6 +14,7 @@ Register with Claude Code:
 
 import json
 import os
+import re
 import sys
 import traceback
 import uuid
@@ -81,6 +82,11 @@ TOOLS = [
                                           "assertion in the same call (COG-064)"},
                 "commit": {"type": "boolean", "description": "atomic micro-commit (parallel-safe)"},
                 "message": {"type": "string", "description": "thought message when commit=true"},
+                "normalize": {"type": "boolean",
+                              "description": "COG-073 opt-in: a prose object is split "
+                                             "deterministically — first clause stays the value, "
+                                             "the FULL original lands verbatim in detail; the "
+                                             "response reports what happened"},
             },
             required=("kind", "subject", "predicate", "object"),
         ),
@@ -193,6 +199,9 @@ TOOLS = [
                     required=("assertion_id", "reason"))},
                 "message": {"type": "string"},
                 "author": {"type": "string", "description": "default: per-session instance id"},
+                "normalize": {"type": "boolean",
+                              "description": "COG-073 opt-in: prose objects split into "
+                                             "value + verbatim detail, per fact"},
             },
             required=("facts", "message"),
         ),
@@ -203,11 +212,16 @@ TOOLS = [
             "Atomic lifecycle transition (COG-056): remove the ACTIVE target assertion with "
             "reason 'superseded' and assert a replacement in the SAME claim family (kind/"
             "subject/predicate/qualifiers preserved, only the object changes) — ONE thought, "
-            "all-or-nothing. Stale target -> clean error."
+            "all-or-nothing. Stale target -> clean error. COG-073: address the target by "
+            "assertion_id OR by subject+predicate (the single active family member resolves "
+            "server-side; several rivals -> clean error listing them)."
         ),
         "inputSchema": _schema(
             {
-                "assertion_id": OID,
+                "assertion_id": {**OID, "description": "target id (or use subject+predicate)"},
+                "subject": {"type": "string", "description": "family subject (COG-073)"},
+                "predicate": {"type": "string", "description": "family predicate (COG-073)"},
+                "project": {"type": "string", "description": "scope family resolution"},
                 "object": {"type": ["string", "integer", "boolean"],
                            "description": "replacement value"},
                 "source": {"type": "string", "description": "type[:uri]"},
@@ -216,7 +230,7 @@ TOOLS = [
                 "premises": {"type": "array", "items": OID},
                 "message": {"type": "string"},
             },
-            required=("assertion_id", "object", "source", "confidence_bps"),
+            required=("object", "source", "confidence_bps"),
         ),
     },
     {
@@ -229,14 +243,17 @@ TOOLS = [
         ),
         "inputSchema": _schema(
             {
-                "assertion_id": OID,
+                "assertion_id": {**OID, "description": "target id (or use subject+predicate)"},
+                "subject": {"type": "string", "description": "family subject (COG-073)"},
+                "predicate": {"type": "string", "description": "family predicate (COG-073)"},
+                "project": {"type": "string", "description": "scope family resolution"},
                 "source": {"type": "string", "description": "type[:uri] backing the refutation"},
                 "confidence_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
                 "actor": {"type": "string", "description": "default: per-session instance id"},
                 "premises": {"type": "array", "items": OID},
                 "message": {"type": "string"},
             },
-            required=("assertion_id", "source", "confidence_bps"),
+            required=("source", "confidence_bps"),
         ),
     },
     {
@@ -248,12 +265,16 @@ TOOLS = [
         ),
         "inputSchema": _schema(
             {
-                "assertion_ids": {"type": "array", "minItems": 1, "items": OID},
+                "assertion_ids": {"type": "array", "minItems": 1, "items": OID,
+                                  "description": "target ids (or use subject+predicate)"},
+                "subject": {"type": "string", "description": "family subject (COG-073)"},
+                "predicate": {"type": "string", "description": "family predicate (COG-073)"},
+                "project": {"type": "string", "description": "scope family resolution"},
                 "reason": {"type": "string"},
                 "author": {"type": "string", "description": "default: per-session instance id"},
                 "message": {"type": "string"},
             },
-            required=("assertion_ids", "reason"),
+            required=("reason",),
         ),
     },
     {
@@ -521,8 +542,43 @@ class CogitTools:
             raise CogitError("detail must be a non-empty string when provided")
         self.repo.annotate(assertion_oid, detail, namespace="detail", author=actor)
 
+    @staticmethod
+    def _normalize_prose(fact):
+        """COG-073 §2 (opt-in): keep the object a value without losing a word —
+        the first clause becomes the object (word-capped to the lint R2
+        threshold), the FULL original prose lands verbatim in detail.
+        Deterministic text surgery, never a model (ADR-0002)."""
+        obj = fact.get("object")
+        if not isinstance(obj, str):
+            return fact, None
+        if len(obj.split()) <= 12 and len(obj) <= 100:
+            return fact, None
+        clause = re.split(r"(?<=[.;!?])\s+|\s+—\s+|\s+--\s+", obj.strip(), maxsplit=1)[0]
+        words = clause.split()
+        if len(words) > 12 or len(clause) > 100:
+            clause = " ".join(words[:12]) + "…"
+        fact = dict(fact)
+        fact["object"] = clause[:100]
+        fact["detail"] = obj if not fact.get("detail") else f"{obj}\n\n{fact['detail']}"
+        return fact, obj
+
+    def _lifecycle_target_args(self, args, where):
+        """COG-073: lifecycle target by 'assertion_id' OR by
+        'subject' + 'predicate' (+ optional 'project') — the single active
+        family member resolves server-side."""
+        if isinstance(args.get("assertion_id"), str):
+            return args["assertion_id"]
+        if isinstance(args.get("subject"), str) and isinstance(args.get("predicate"), str):
+            return self.repo.resolve_family(args["subject"], args["predicate"],
+                                            args.get("project"))
+        raise CogitError(f"{where}: pass 'assertion_id', or 'subject' + 'predicate'")
+
     def tool_add_fact(self, args):
-        doc = self._build_fact_doc(self._validated_fact_args(args, "add_fact"))
+        args = self._validated_fact_args(args, "add_fact")
+        original = None
+        if args.get("normalize"):
+            args, original = self._normalize_prose(args)
+        doc = self._build_fact_doc(args)
         if args.get("commit"):
             # atomic micro-commit: parallel-safe by construction (COG-035)
             result = self.repo.micro_commit(doc, message=args.get("message"))
@@ -532,6 +588,8 @@ class CogitTools:
             hints = self._write_hints([(doc, result["claim"], result["assertion"])])
             if hints:
                 result["hints"] = hints
+            if original is not None:
+                result["normalized"] = {"object": original}
             return result
         claim_oid, assertion_oid = self.repo.add_fact(doc)
         if args.get("detail"):
@@ -541,6 +599,8 @@ class CogitTools:
         hints = self._write_hints([(doc, claim_oid, assertion_oid)])
         if hints:
             result["hints"] = hints
+        if original is not None:
+            result["normalized"] = {"object": original}
         return result
 
     def tool_record(self, args):
@@ -566,8 +626,18 @@ class CogitTools:
                 "id": self.repo.expand_object_id(removal["assertion_id"]),
                 "reason": removal["reason"],
             })
-        docs = [self._build_fact_doc(self._validated_fact_args(fact, f"record: facts[{pos}]"))
-                for pos, fact in enumerate(facts)]
+        facts = [self._validated_fact_args(fact, f"record: facts[{pos}]")
+                 for pos, fact in enumerate(facts)]
+        normalized = []
+        if args.get("normalize"):
+            shaped = []
+            for pos, fact in enumerate(facts):
+                fact, original = self._normalize_prose(fact)
+                shaped.append(fact)
+                if original is not None:
+                    normalized.append({"index": pos, "object": original})
+            facts = shaped
+        docs = [self._build_fact_doc(fact) for fact in facts]
         result = self.repo.micro_commit_batch(
             docs, prepared, message, author=args.get("author", INSTANCE_ACTOR))
         for fact, landed in zip(facts, result["facts"]):
@@ -580,6 +650,8 @@ class CogitTools:
         ])
         if hints:
             result["hints"] = hints
+        if normalized:
+            result["normalized"] = normalized
         return result
 
     def _lifecycle_assertion(self, args, where):
@@ -609,23 +681,23 @@ class CogitTools:
         return assertion
 
     def tool_supersede_fact(self, args):
-        if not isinstance(args.get("assertion_id"), str):
-            raise CogitError("supersede_fact: 'assertion_id' is required")
+        target = self._lifecycle_target_args(args, "supersede_fact")
         if "object" not in args:
             raise CogitError("supersede_fact: replacement 'object' is required")
         assertion = self._lifecycle_assertion(args, "supersede_fact")
-        return self.repo.supersede_fact(args["assertion_id"], args["object"], assertion,
+        return self.repo.supersede_fact(target, args["object"], assertion,
                                         message=args.get("message"))
 
     def tool_refute_fact(self, args):
-        if not isinstance(args.get("assertion_id"), str):
-            raise CogitError("refute_fact: 'assertion_id' is required")
+        target = self._lifecycle_target_args(args, "refute_fact")
         assertion = self._lifecycle_assertion(args, "refute_fact")
-        return self.repo.refute_fact(args["assertion_id"], assertion,
+        return self.repo.refute_fact(target, assertion,
                                      message=args.get("message"))
 
     def tool_retire_fact(self, args):
         ids = args.get("assertion_ids")
+        if ids is None:
+            ids = [self._lifecycle_target_args(args, "retire_fact")]
         if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
             raise CogitError("retire_fact: 'assertion_ids' must be a non-empty array of strings")
         if not isinstance(args.get("reason"), str) or not args["reason"].strip():

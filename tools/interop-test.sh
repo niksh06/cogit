@@ -215,6 +215,21 @@ RSW=$($PY cat-object "$RST" | $PYBIN -c 'import json,sys; print(json.load(sys.st
 [ "$RSW" = "cogit-rs/$CHV" ] || fail "rust-written thought carries writer '$RSW'"
 ok
 
+step "subject slug + lifecycle by family cross runtimes (COG-073)"
+TS11=2026-07-02T20:00:11Z; TS12=2026-07-02T20:00:12Z
+$PY add-fact --kind agent_decision --subject "Interop:Family  Line" --predicate current_state \
+  --object v1 --source agent:py --confidence 9000 --actor py \
+  --asserted-at $TS11 --commit --timestamp $TS11 --json >/dev/null
+SUBJ=$($PY facts --subject "interop:family-line" --json | $PYBIN -c \
+  'import json,sys; print(json.load(sys.stdin)["facts"][0]["subject"])')
+[ "$SUBJ" = "interop:family-line" ] || fail "python stored subject '$SUBJ'"
+$RUST supersede-fact --subject "INTEROP:FAMILY-LINE" --predicate current_state \
+  --object v2 --source agent:rs --confidence 9100 --actor rs --timestamp $TS12 --json >/dev/null
+VAL=$($PY facts --subject "Interop:Family Line" --json | $PYBIN -c \
+  'import json,sys; f=json.load(sys.stdin)["facts"]; print(len(f), f[0]["object"])')
+[ "$VAL" = "1 v2" ] || fail "family supersede diverged: '$VAL'"
+ok
+
 step "dump agrees across runtimes (COG-042; rows carry asserted_at+method, COG-059)"
 PYD=$($PY dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
 RSD=$($RUST dump | $PYBIN -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([sorted(d["introducer"].items()), sorted((f["assertion"], f["asserted_at"], f["method"]) for f in d["facts"]), d["recap"].get("from_anchor")]))')
