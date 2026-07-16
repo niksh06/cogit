@@ -438,6 +438,21 @@ class McpServerTests(unittest.TestCase):
         _err, facts = self.client.call_tool("facts", {"subject": "cogit:release"})
         self.assertEqual(facts["facts"], [])
 
+    def test_missing_target_error_names_documented_field(self):
+        # COG-073: the "no addressing mode" error must name the field THIS
+        # tool's schema documents — retire_fact exposes the plural
+        # 'assertion_ids'; supersede/refute the singular 'assertion_id'.
+        self.client.request("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+        is_error, message = self.client.call_tool("retire_fact", {"reason": "no target given"})
+        self.assertTrue(is_error)
+        self.assertIn("assertion_ids", message)  # the documented plural, not the singular
+        # counter-check: supersede still steers to the singular it documents
+        is_error, message = self.client.call_tool("supersede_fact", {
+            "object": "x", "source": "agent:test", "confidence_bps": 9000})
+        self.assertTrue(is_error)
+        self.assertIn("assertion_id", message)
+        self.assertNotIn("assertion_ids", message)
+
 
 if __name__ == "__main__":
     unittest.main()
