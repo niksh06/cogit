@@ -571,7 +571,10 @@ class CogitTools:
         if isinstance(args.get("subject"), str) and isinstance(args.get("predicate"), str):
             return self.repo.resolve_family(args["subject"], args["predicate"],
                                             args.get("project"))
-        raise CogitError(f"{where}: pass 'assertion_id', or 'subject' + 'predicate'")
+        # COG-073: name the field this tool's schema documents — retire_fact
+        # exposes the plural 'assertion_ids'; supersede/refute the singular.
+        field = "assertion_ids" if where == "retire_fact" else "assertion_id"
+        raise CogitError(f"{where}: pass '{field}', or 'subject' + 'predicate'")
 
     def tool_add_fact(self, args):
         args = self._validated_fact_args(args, "add_fact")
